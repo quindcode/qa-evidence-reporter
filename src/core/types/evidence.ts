@@ -107,6 +107,22 @@ export interface EvidenceStore {
    * sesión. `stepId` aquí es el mismo `StepExecution.id` de `core/types/session.ts`.
    */
   list(stepId: string): Promise<EvidenceFile[]>;
+
+  /**
+   * Borra físicamente del disco el archivo original de `evidenceFileId`
+   * (y su thumbnail, si existe) dentro de `stepId`. No-op (no lanza) si el
+   * id no corresponde a ningún archivo bajo ese step — el caller (server)
+   * es responsable de decidir si eso amerita un 404, ya que `EvidenceStore`
+   * no conoce el concepto de "request HTTP".
+   *
+   * Existe como método separado de `list`/`save` (en vez de, por ejemplo,
+   * un flag en `save`) porque borrar es la única operación de escritura que
+   * necesita re-derivar la ruta del archivo a partir de `evidenceFileId`
+   * escaneando el step (mismo mecanismo que `getThumbnail`/`list`, ver su
+   * JSDoc) — `stepId` sin `featureId`/`scenarioId` alcanza porque ya es lo
+   * único que la ruta física necesita para localizarse de forma única.
+   */
+  remove(stepId: string, evidenceFileId: string): Promise<void>;
 }
 
 /**

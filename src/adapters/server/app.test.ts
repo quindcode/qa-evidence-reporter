@@ -199,7 +199,7 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(zipBuffer.subarray(0, 2).toString('latin1')).toBe('PK');
   }, 15_000);
 
-  it('DELETE evidencia la quita de la lista del step sin borrar el archivo físico', async () => {
+  it('DELETE evidencia la quita de la lista del step Y borra el archivo físico (+ thumbnail)', async () => {
     const context = await buildContext(projectRoot);
     const app = createApp(context);
 
@@ -216,6 +216,12 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
       .expect(201);
     const evidenceId: string = evidenceResponse.body.evidenceFiles[0].id;
     const physicalPath = join(context.evidenceBaseDir, evidenceResponse.body.evidenceFiles[0].path);
+    const thumbnailPath = join(
+      context.evidenceBaseDir,
+      evidenceResponse.body.evidenceFiles[0].thumbnailPath,
+    );
+    expect(existsSync(physicalPath)).toBe(true);
+    expect(existsSync(thumbnailPath)).toBe(true);
 
     const deleteResponse = await request(app)
       .delete(`/api/session/step/${stepId}/evidence/${evidenceId}`)
@@ -224,8 +230,22 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(
       deleteResponse.body.session.selectedFeatures[0].scenarios[0].steps[0].evidenceFileIds,
     ).not.toContain(evidenceId);
-    // El archivo físico no se borra (ver core/report/reportGenerator.ts, mismo criterio documentado).
-    expect(existsSync(physicalPath)).toBe(true);
+    // Bug real reportado por un usuario probando la UI: el archivo (y su
+    // thumbnail) deben desaparecer del disco, no solo de `session.json` —
+    // de lo contrario `GET .../evidence` (que escanea el filesystem, ver
+    // `EvidenceStore.list`) lo vuelve a mostrar como si nunca se hubiera
+    // borrado.
+    expect(existsSync(physicalPath)).toBe(false);
+    expect(existsSync(thumbnailPath)).toBe(false);
+
+    // Y no reaparece al refrescar la lista (el flujo real que la UI dispara tras un delete).
+    const listAfterDelete = await request(app).get(`/api/session/step/${stepId}/evidence`).expect(200);
+    expect(listAfterDelete.body.evidenceFiles).toEqual([]);
+
+    // DELETE repetido sobre el mismo id (ya borrado) no debe fallar (idempotente).
+    await request(app)
+      .delete(`/api/session/step/${stepId}/evidence/${evidenceId}`)
+      .expect(200);
   });
 
   it('GET evidencia de un step devuelve metadata completa (kind, thumbnailPath, sizeBytes)', async () => {

@@ -235,6 +235,14 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
       const evidenceId = requireStringParam(req.params.evidenceId, 'evidenceId');
       findStepContext(session, stepId); // lanza InvalidStepTransitionError si el step no existe.
 
+      // Se borra primero el archivo físico y DESPUÉS la referencia en la
+      // sesión (y no al revés): si el borrado físico fallara, preferimos
+      // dejar una referencia "huérfana" pero recuperable en session.json
+      // antes que una sesión que ya no la referencia pero cuyo archivo
+      // sigue ocupando disco. `EvidenceStore.remove` es no-op si el archivo
+      // ya no existe (ver su JSDoc), así que reintentar este DELETE nunca
+      // falla por "ya borrado".
+      await services.evidenceStore.remove(stepId, evidenceId);
       const updated = await services.sessionEngine.removeEvidence(stepId, evidenceId);
       res.json({ session: updated });
     }),

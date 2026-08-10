@@ -190,6 +190,62 @@ describe('createEvidenceStore', () => {
       expect(await store.getThumbnail('id-inexistente')).toBeNull();
     });
   });
+
+  describe('remove', () => {
+    it('borra el archivo original y su thumbnail del disco', async () => {
+      const store = createEvidenceStore(dir);
+      const evidence = await store.save({
+        featureId: 'f0-login',
+        scenarioId: 'f0-login_s0-successful-login',
+        stepId: 'f0-login_s0-successful-login_st0',
+        originalFilename: 'a.png',
+        buffer: await makePngBuffer(),
+      });
+      await expect(stat(join(dir, evidence.path))).resolves.toBeDefined();
+      await expect(stat(join(dir, evidence.thumbnailPath!))).resolves.toBeDefined();
+
+      await store.remove('f0-login_s0-successful-login_st0', evidence.id);
+
+      await expect(stat(join(dir, evidence.path))).rejects.toThrow();
+      await expect(stat(join(dir, evidence.thumbnailPath!))).rejects.toThrow();
+    });
+
+    it('deja de aparecer en list() tras removerlo', async () => {
+      const store = createEvidenceStore(dir);
+      const evidence = await store.save({
+        featureId: 'f0-login',
+        scenarioId: 'f0-login_s0-successful-login',
+        stepId: 'f0-login_s0-successful-login_st0',
+        originalFilename: 'a.png',
+        buffer: await makePngBuffer(),
+      });
+
+      await store.remove('f0-login_s0-successful-login_st0', evidence.id);
+
+      expect(await store.list('f0-login_s0-successful-login_st0')).toEqual([]);
+    });
+
+    it('es no-op (no lanza) si el id no existe', async () => {
+      const store = createEvidenceStore(dir);
+      await expect(store.remove('no-existe', 'id-inexistente')).resolves.toBeUndefined();
+    });
+
+    it('es idempotente: removerlo dos veces no lanza la segunda vez', async () => {
+      const store = createEvidenceStore(dir);
+      const evidence = await store.save({
+        featureId: 'f0-login',
+        scenarioId: 'f0-login_s0-successful-login',
+        stepId: 'f0-login_s0-successful-login_st0',
+        originalFilename: 'a.png',
+        buffer: await makePngBuffer(),
+      });
+
+      await store.remove('f0-login_s0-successful-login_st0', evidence.id);
+      await expect(
+        store.remove('f0-login_s0-successful-login_st0', evidence.id),
+      ).resolves.toBeUndefined();
+    });
+  });
 });
 
 describe('resolveEvidenceKind', () => {

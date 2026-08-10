@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, relative, sep } from 'node:path';
 
 import { Jimp } from 'jimp';
@@ -93,7 +93,27 @@ export function createEvidenceStore(baseDir: string, deps: EvidenceStoreDeps = {
     return files;
   }
 
-  return { save, getThumbnail, list };
+  async function remove(stepId: string, evidenceFileId: string): Promise<void> {
+    const files = await scanEvidenceTree(evidenceRoot, baseDir, stepId);
+    const match = files.find((file) => file.id === evidenceFileId);
+    if (!match) return;
+
+    await unlinkIfExists(join(baseDir, match.path));
+    if (match.thumbnailPath) {
+      await unlinkIfExists(join(baseDir, match.thumbnailPath));
+    }
+  }
+
+  return { save, getThumbnail, list, remove };
+}
+
+/** `unlink` que no lanza si el archivo ya no existe (borrado concurrente, o llamada repetida). */
+async function unlinkIfExists(filePath: string): Promise<void> {
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
 }
 
 /**

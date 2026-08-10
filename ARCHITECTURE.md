@@ -963,3 +963,43 @@ Thumbnails junto al archivo original: mismo nombre + `.thumb.png` (jimp) o
   `templates/`, `package.json` — el campo `files` ya declarado desde fase 4),
   nunca archivos sueltos de `src/` del repo fuente. Ver el reporte de cierre
   de esta fase para los comandos y la salida real completa.
+
+### Post-fase 6 — bugfix: eliminar evidencia no borraba el archivo físico
+
+Reportado por un usuario real probando la UI en vivo: al adjuntar una
+evidencia por error y borrarla con el botón "×", la evidencia volvía a
+aparecer. Causa raíz confirmada leyendo el código (no era un malentendido de
+UI): `SessionEngine.removeEvidence` (fase 2) solo quitaba el id de
+`step.evidenceFileIds` en `session.json`, pero `EvidenceStore` (también fase
+2) NUNCA tuvo un método para borrar el archivo físico — la fase 5a incluso
+documentó esto explícitamente como comportamiento aceptado en un test
+(`"DELETE evidencia la quita de la lista del step SIN borrar el archivo
+físico"`). Esto quedó oculto hasta la fase 5b, cuando la UI empezó a llamar
+a `GET /api/session/step/:id/evidence` para refrescar previews — ese
+endpoint usa `EvidenceStore.list()`, que reconstruye la lista ESCANEANDO EL
+FILESYSTEM (fuente de verdad independiente de `session.json`, ver su JSDoc
+original) — así que el archivo, todavía físicamente presente, volvía a
+aparecer en cada refresh sin importar qué dijera `session.json`.
+
+Corrección:
+- `EvidenceStore` (interfaz en `core/types/evidence.ts` + implementación en
+  `core/evidence/evidenceStore.ts`) gana un método nuevo:
+  `remove(stepId, evidenceFileId): Promise<void>`, que localiza el archivo
+  reutilizando el mismo escaneo que `list`/`getThumbnail` y borra el
+  original y su thumbnail (`unlink`, ignorando `ENOENT` — no-op/idempotente
+  si ya no existe, mismo criterio de "best effort" que ya usa
+  `tryGenerateThumbnail`).
+- `DELETE /api/session/step/:stepId/evidence/:evidenceId`
+  (`adapters/server/routes/session.ts`) ahora llama a
+  `evidenceStore.remove(...)` ANTES de `sessionEngine.removeEvidence(...)`
+  — en ese orden deliberado: si el borrado físico fallara, se prefiere dejar
+  una referencia "huérfana" pero recuperable en `session.json` antes que una
+  sesión que ya no referencia un archivo que sigue ocupando disco.
+- Se corrigió el test de fase 5a que documentaba el bug como comportamiento
+  esperado, y se agregaron tests dedicados de `EvidenceStore.remove` (borrado
+  real, no reaparece en `list()`, no-op sobre id inexistente, idempotencia)
+  y un test de integración HTTP que reproduce el flujo completo (subir →
+  borrar → refrescar lista → confirmar vacía → borrar de nuevo sin error).
+- Verificado además manualmente contra el binario compilado real
+  (`dist/`), reproduciendo el flujo exacto reportado (subir evidencia,
+  borrarla, listar de nuevo) vía `curl` sobre un server real.
