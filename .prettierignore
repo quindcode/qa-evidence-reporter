@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+package-lock.json
+# Fuente única de verdad del proyecto: nunca se reformatea automáticamente.
+ARCHITECTURE.md
+# Prettier no tiene un plugin de Handlebars instalado (ver ARCHITECTURE.md,
+# fase 3): intentar formatear .hbs con el parser HTML por defecto falla en
+# cualquier `{{...}}` (los interpreta como sintaxis inválida).
+templates/**/*.hbs

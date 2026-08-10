@@ -1,0 +1,31 @@
+<script>
+  // Wiring del botón de tema (ver partials/theme-init.hbs para la carga
+  // inicial). Fuerza un tema explícito y lo persiste en localStorage.
+  (function () {
+    var STORAGE_KEY = 'qa-evidence-reporter-theme';
+
+    function currentTheme() {
+      var explicit = document.documentElement.getAttribute('data-theme');
+      if (explicit === 'light' || explicit === 'dark') return explicit;
+      var prefersDark =
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return prefersDark ? 'dark' : 'light';
+    }
+
+    function toggleTheme() {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch (error) {
+        // Ver nota en theme-init.hbs: si no hay localStorage, el toggle
+        // sigue funcionando para esta vista, solo no persiste entre recargas.
+      }
+    }
+
+    var button = document.getElementById('qa-theme-toggle');
+    if (button) {
+      button.addEventListener('click', toggleTheme);
+    }
+  })();
+</script>

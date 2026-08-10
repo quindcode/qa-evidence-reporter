@@ -1,0 +1,385 @@
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { Jimp } from 'jimp';
+import request from 'supertest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { QaConfigSchema } from '../../core/types/config.js';
+import type { QaConfig } from '../../core/types/config.js';
+import type { Logger } from '../../core/types/logger.js';
+import { createApp } from './app.js';
+import type { ServerContext } from './context.js';
+import { DEFAULT_TEMPLATE_DIR } from './templatePaths.js';
+import { UI_DIST_DIR } from './uiPaths.js';
+
+const noopLogger: Logger = { debug() {}, info() {}, warn() {}, error() {} };
+
+const FEATURE_SOURCE = `Feature: Inicio de sesión
+  Scenario: Login exitoso
+    Given un usuario registrado
+    When ingresa credenciales válidas
+`;
+
+async function makePngBuffer(sizeHint: 'small' | 'large' = 'small'): Promise<Buffer> {
+  const size = sizeHint === 'small' ? 10 : 400;
+  const image = new Jimp({ width: size, height: size, color: 0xff0000ff });
+  return image.getBuffer('image/png');
+}
+
+async function buildContext(
+  projectRoot: string,
+  overrides: Partial<QaConfig> = {},
+): Promise<ServerContext> {
+  const featuresDir = join(projectRoot, 'features');
+  const evidenceBaseDir = join(projectRoot, 'evidence');
+  const reportsDir = join(projectRoot, 'reports');
+
+  await mkdir(featuresDir, { recursive: true });
+  await writeFile(join(featuresDir, 'login.feature'), FEATURE_SOURCE, 'utf-8');
+
+  const config = QaConfigSchema.parse({
+    projectName: 'Proyecto de prueba',
+    ...overrides,
+  });
+
+  return {
+    config,
+    logger: noopLogger,
+    projectRoot,
+    sessionFilePath: join(projectRoot, '.qa-evidence-reporter', 'session.json'),
+    featuresDir,
+    evidenceBaseDir,
+    reportsDir,
+    templateDir: DEFAULT_TEMPLATE_DIR,
+  };
+}
+
+describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la prueba con socket real)', () => {
+  let projectRoot: string;
+
+  beforeEach(async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), 'qa-server-'));
+  });
+
+  afterEach(async () => {
+    await rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('GET /api/features sin sesión previa: lista la feature y session.exists es false', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const response = await request(app).get('/api/features').expect(200);
+
+    expect(response.body.features).toHaveLength(1);
+    expect(response.body.features[0].id).toBe('login.feature');
+    expect(response.body.features[0].name).toContain('Inicio de sesión');
+    expect(response.body.session).toEqual({ exists: false });
+  });
+
+  it('GET / responde el placeholder (o la SPA real, si ya se corrió "npm run build:ui")', async () => {
+    // `UI_DIST_DIR` (`uiPaths.ts`) es una ruta fija del paquete instalado,
+    // NO inyectable vía `ServerContext` — no depende de `projectRoot`
+    // (temporal, aislado por test) como el resto de este archivo. Desde
+    // fase 5b, `dist/ui/index.html` existe de verdad después de `npm run
+    // build`/`build:ui`, así que este test (escrito en fase 5a, cuando
+    // `ui/` todavía no existía) ya no puede asumir un único resultado fijo
+    // sin acoplarse al estado del filesystem global del repo en el momento
+    // de correr `npm run test` — se verifica en cambio que la respuesta sea
+    // CONSISTENTE con si ese build existe o no en este momento, que es
+    // exactamente lo que decide `app.ts` (ver `uiBuildExists`).
+    const app = createApp(await buildContext(projectRoot));
+
+    const response = await request(app).get('/').expect(200);
+
+    if (existsSync(join(UI_DIST_DIR, 'index.html'))) {
+      expect(response.text).toContain('<div id="app">');
+      expect(response.text).not.toContain('UI aún no construida');
+    } else {
+      expect(response.text).toContain('UI aún no construida');
+    }
+  });
+
+  it('GET /api/session sin sesión previa responde 404 con SESSION_NOT_FOUND', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const response = await request(app).get('/api/session').expect(404);
+
+    expect(response.body.error.code).toBe('SESSION_NOT_FOUND');
+  });
+
+  it('flujo completo: select -> evidencia -> resultado -> navigate -> report generate -> export-zip', async () => {
+    const context = await buildContext(projectRoot);
+    const app = createApp(context);
+
+    // 1. Seleccionar la feature -> crea la sesión.
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    expect(selectResponse.body.session.status).toBe('in_progress');
+    const firstStepId: string = selectResponse.body.currentStep.step.id;
+
+    // 2. GET /api/session refleja el step actual ya resuelto.
+    const sessionResponse = await request(app).get('/api/session').expect(200);
+    expect(sessionResponse.body.currentStep.step.id).toBe(firstStepId);
+    expect(sessionResponse.body.currentStep.step.step.keyword).toBe('Given');
+
+    // 3. Subir evidencia real para el step actual.
+    const pngBuffer = await makePngBuffer();
+    const evidenceResponse = await request(app)
+      .post(`/api/session/step/${firstStepId}/evidence`)
+      .attach('files', pngBuffer, 'captura.png')
+      .expect(201);
+
+    expect(evidenceResponse.body.evidenceFiles).toHaveLength(1);
+    const evidenceFile = evidenceResponse.body.evidenceFiles[0];
+    expect(evidenceFile.originalFilename).toBe('captura.png');
+    expect(
+      evidenceResponse.body.session.selectedFeatures[0].scenarios[0].steps[0].evidenceFileIds,
+    ).toContain(evidenceFile.id);
+
+    // El archivo debe quedar físicamente en evidenceBaseDir.
+    const physicalPath = join(context.evidenceBaseDir, evidenceFile.path);
+    expect(existsSync(physicalPath)).toBe(true);
+    const onDisk = await readFile(physicalPath);
+    expect(onDisk.length).toBe(pngBuffer.length);
+
+    // 4. Marcar el primer step como pass.
+    await request(app)
+      .post(`/api/session/step/${firstStepId}/result`)
+      .send({ result: 'pass' })
+      .expect(200);
+
+    // 5. Avanzar al siguiente step.
+    const navigateResponse = await request(app)
+      .post('/api/session/navigate')
+      .send({ direction: 'next' })
+      .expect(200);
+    const secondStepId: string = navigateResponse.body.currentStep.step.id;
+    expect(secondStepId).not.toBe(firstStepId);
+
+    // 6. Marcar el segundo (y último) step como pass.
+    await request(app)
+      .post(`/api/session/step/${secondStepId}/result`)
+      .send({ result: 'pass' })
+      .expect(200);
+
+    // 7. Avanzar de nuevo: no queda ningún step siguiente -> la sesión pasa a 'completed'.
+    const completeResponse = await request(app)
+      .post('/api/session/navigate')
+      .send({ direction: 'next' })
+      .expect(200);
+    expect(completeResponse.body.session.status).toBe('completed');
+
+    // 8. Generar el reporte.
+    const generateResponse = await request(app).post('/api/report/generate').expect(201);
+    expect(generateResponse.body.reportUrl).toBe('/reports-static/index.html');
+    expect(existsSync(join(context.reportsDir, 'index.html'))).toBe(true);
+
+    // El reporte también debe poder previsualizarse vía el estático montado.
+    await request(app).get('/reports-static/index.html').expect(200);
+
+    // 9. Exportar el ZIP: verificar que el buffer es un ZIP válido (firma "PK").
+    const zipResponse = await request(app)
+      .get('/api/report/export-zip')
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+
+    expect(zipResponse.headers['content-disposition']).toContain('attachment');
+    expect(zipResponse.headers['content-disposition']).toContain('qa-report.zip');
+    const zipBuffer = zipResponse.body as Buffer;
+    expect(zipBuffer.subarray(0, 2).toString('latin1')).toBe('PK');
+  }, 15_000);
+
+  it('DELETE evidencia la quita de la lista del step sin borrar el archivo físico', async () => {
+    const context = await buildContext(projectRoot);
+    const app = createApp(context);
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const pngBuffer = await makePngBuffer();
+    const evidenceResponse = await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', pngBuffer, 'captura.png')
+      .expect(201);
+    const evidenceId: string = evidenceResponse.body.evidenceFiles[0].id;
+    const physicalPath = join(context.evidenceBaseDir, evidenceResponse.body.evidenceFiles[0].path);
+
+    const deleteResponse = await request(app)
+      .delete(`/api/session/step/${stepId}/evidence/${evidenceId}`)
+      .expect(200);
+
+    expect(
+      deleteResponse.body.session.selectedFeatures[0].scenarios[0].steps[0].evidenceFileIds,
+    ).not.toContain(evidenceId);
+    // El archivo físico no se borra (ver core/report/reportGenerator.ts, mismo criterio documentado).
+    expect(existsSync(physicalPath)).toBe(true);
+  });
+
+  it('GET evidencia de un step devuelve metadata completa (kind, thumbnailPath, sizeBytes)', async () => {
+    const context = await buildContext(projectRoot);
+    const app = createApp(context);
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const pngBuffer = await makePngBuffer();
+    const uploadResponse = await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', pngBuffer, 'captura.png')
+      .expect(201);
+    const uploadedId: string = uploadResponse.body.evidenceFiles[0].id;
+
+    const listResponse = await request(app).get(`/api/session/step/${stepId}/evidence`).expect(200);
+
+    expect(listResponse.body.evidenceFiles).toHaveLength(1);
+    const evidenceFile = listResponse.body.evidenceFiles[0];
+    expect(evidenceFile.id).toBe(uploadedId);
+    expect(evidenceFile.kind).toBe('image');
+    expect(evidenceFile.originalFilename).toBe('captura.png');
+    expect(typeof evidenceFile.thumbnailPath).toBe('string');
+    expect(evidenceFile.sizeBytes).toBe(pngBuffer.length);
+  });
+
+  it('GET evidencia de un stepId inexistente -> 400 INVALID_STEP_TRANSITION', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+
+    const response = await request(app).get('/api/session/step/no-existe/evidence').expect(400);
+
+    expect(response.body.error.code).toBe('INVALID_STEP_TRANSITION');
+  });
+
+  it('POST result "fail" sin defectDescription -> 400 con INVALID_STEP_TRANSITION', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const response = await request(app)
+      .post(`/api/session/step/${stepId}/result`)
+      .send({ result: 'fail' })
+      .expect(400);
+
+    expect(response.body.error.code).toBe('INVALID_STEP_TRANSITION');
+    expect(response.body.error.message).toBeTruthy();
+  });
+
+  it('POST result "fail" con defectDescription funciona y queda registrado', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const response = await request(app)
+      .post(`/api/session/step/${stepId}/result`)
+      .send({ result: 'fail', defectDescription: 'El botón de login no responde.' })
+      .expect(200);
+
+    expect(response.body.session.selectedFeatures[0].scenarios[0].steps[0].result).toBe('fail');
+    expect(response.body.session.selectedFeatures[0].scenarios[0].steps[0].defectDescription).toBe(
+      'El botón de login no responde.',
+    );
+  });
+
+  it('evidencia que excede evidence.maxFileSizeMB -> 413 EVIDENCE_FILE_TOO_LARGE', async () => {
+    const context = await buildContext(projectRoot, {
+      evidence: { maxFileSizeMB: 0.001, allowedFormats: ['png'] },
+    });
+    const app = createApp(context);
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const largeBuffer = await makePngBuffer('large');
+    expect(largeBuffer.length).toBeGreaterThan(0.001 * 1024 * 1024);
+
+    const response = await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', largeBuffer, 'grande.png')
+      .expect(413);
+
+    expect(response.body.error.code).toBe('EVIDENCE_FILE_TOO_LARGE');
+  });
+
+  it('evidencia con formato no permitido -> 415 UNSUPPORTED_EVIDENCE_FORMAT', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const response = await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', Buffer.from('contenido de texto plano'), 'notas.txt')
+      .expect(415);
+
+    expect(response.body.error.code).toBe('UNSUPPORTED_EVIDENCE_FORMAT');
+  });
+
+  it('POST /api/session/select sobre una sesión in_progress sin ?force=true -> 409', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+
+    const conflictResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(409);
+    expect(conflictResponse.body.error.code).toBe('SESSION_ALREADY_IN_PROGRESS');
+
+    await request(app)
+      .post('/api/session/select?force=true')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+  });
+
+  it('POST /api/report/generate sin sesión guardada -> 404 NOTHING_TO_REPORT', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const response = await request(app).post('/api/report/generate').expect(404);
+
+    expect(response.body.error.code).toBe('NOTHING_TO_REPORT');
+  });
+
+  it('GET /api/report/export-zip sin reporte generado -> 404 NO_REPORT_GENERATED', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const response = await request(app).get('/api/report/export-zip').expect(404);
+
+    expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
+  });
+});

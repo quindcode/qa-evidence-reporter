@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>qa-evidence-reporter</title>
+    <meta name="viewport" content="width=1280, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Fija `data-theme` ANTES del primer paint (evita un flash del tema
+      // equivocado mientras Preact monta y corre `useTheme`, ver
+      // `src/ui/hooks/useTheme.ts` — misma lógica de precedencia:
+      // localStorage explícito > prefers-color-scheme > 'light').
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('qa-evidence-reporter:theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          // localStorage puede no estar disponible (modo privado estricto); no bloquea el render.
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

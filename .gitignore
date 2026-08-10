@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.log
+.qa-evidence-reporter/
+
+# Artefactos generados al probar sample-project localmente (evidencia/reporte
+# de sesiones de prueba) — sample-project debe quedar "limpio" en el repo
+# para que cada quien lo pruebe desde cero.
+sample-project/evidence/
+sample-project/reports/
+
+# Config local de Claude Code (permisos de este usuario/sesión, no es parte
+# del proyecto compartido).
+.claude/settings.local.json

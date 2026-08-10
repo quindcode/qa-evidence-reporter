@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{feature.name}} — {{project.projectName}}</title>
+    {{> theme-init}}
+    {{> styles}}
+  </head>
+  <body>
+    <div class="qa-container">
+      <a class="qa-back-link" href="{{basePath}}index.html">&larr; Volver al dashboard</a>
+
+      <header class="qa-topbar">
+        <div>
+          <h1>{{feature.name}}</h1>
+          <p class="qa-meta">
+            {{project.projectName}}
+            {{#if feature.tags.length}} · {{#each feature.tags}}<span class="qa-tag">#{{this}}</span> {{/each}}{{/if}}
+          </p>
+        </div>
+        <button
+          id="qa-theme-toggle"
+          class="qa-theme-toggle"
+          type="button"
+          aria-label="Cambiar entre tema claro y oscuro"
+        >
+          🌓 Tema
+        </button>
+      </header>
+
+      <section class="qa-card">
+        <div class="qa-dashboard-grid">
+          <div>
+            <strong>{{> badge feature}}</strong>
+          </div>
+          <div class="qa-progress-block">
+            {{> legend summary=feature.summary}}
+            <p class="qa-meta">
+              {{feature.summary.pass}}/{{feature.summary.total}} steps aprobados ({{feature.summary.passRatePercent}}%)
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {{#each feature.scenarios}}
+        <section class="qa-scenario" aria-label="Scenario: {{name}}">
+          <div class="qa-scenario-header">
+            <h3>{{name}}</h3>
+            {{> badge}}
+            {{#if tags.length}}
+              {{#each tags}}<span class="qa-tag">#{{this}}</span> {{/each}}
+            {{/if}}
+          </div>
+
+          {{#each steps}}
+            <div class="qa-step">
+              <div class="qa-step-header">
+                <span class="qa-step-keyword {{#if fromBackground}}qa-step-background{{/if}}">{{keyword}}</span>
+                <span>{{text}}</span>
+                {{> badge}}
+              </div>
+
+              {{#if notes}}
+                <p class="qa-step-notes">📝 {{notes}}</p>
+              {{/if}}
+
+              {{#if (eq result "fail")}}
+                <div class="qa-defect" role="alert">
+                  <strong>Defecto encontrado</strong>
+                  {{defectDescription}}
+                </div>
+              {{/if}}
+
+              {{#if evidence.length}}
+                <div class="qa-evidence-grid">
+                  {{#each evidence}}
+                    {{> evidence-item}}
+                  {{/each}}
+                </div>
+              {{/if}}
+            </div>
+          {{/each}}
+        </section>
+      {{/each}}
+    </div>
+    {{> theme-toggle-script}}
+  </body>
+</html>

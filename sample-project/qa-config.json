@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/qa-evidence-reporter/config.schema.json",
+  "projectName": "Tienda Online Quind — QA Manual",
+  "team": ["Ana Pérez (QA Lead)", "Diego Gómez (QA)", "Priya Shah (QA)"],
+  "featuresDir": "features",
+  "evidenceDir": "evidence",
+  "reportsDir": "reports",
+  "server": { "port": 4173, "openBrowser": true },
+  "evidence": {
+    "maxFileSizeMB": 50,
+    "allowedFormats": ["png", "jpg", "jpeg", "gif", "mp4", "webm", "pdf"]
+  },
+  "logging": { "level": "info" },
+  "reportTemplate": null
+}

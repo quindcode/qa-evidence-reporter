@@ -1,0 +1,286 @@
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { Jimp } from 'jimp';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { createEvidenceStore } from '../evidence/index.js';
+import { createSessionEngine } from '../session/index.js';
+import { ReportGenerationError } from '../types/errors.js';
+import type { ParsedFeature } from '../types/parser.js';
+import type { EvidenceFile } from '../types/evidence.js';
+import type { SessionState } from '../types/session.js';
+import { createHandlebarsTemplateEngine } from './templateEngine.js';
+import { createReportGenerator } from './reportGenerator.js';
+
+/** Carpeta real de templates del paquete (`templates/default`), usada tal cual la usaría el CLI en fases futuras. */
+const DEFAULT_TEMPLATE_DIR = fileURLToPath(new URL('../../../templates/default', import.meta.url));
+
+const FIXED_GENERATED_AT = '2026-01-15T10:00:00.000Z';
+
+/** PNG sintético de 10x10, igual approach que `evidenceStore.test.ts`. */
+async function makePngBuffer(): Promise<Buffer> {
+  const image = new Jimp({ width: 10, height: 10, color: 0x2266ffff });
+  return image.getBuffer('image/png');
+}
+
+/**
+ * Dos features con evidencia e íconos de resultado mezclados (pass/fail/skip),
+ * suficiente para probar el pipeline completo evidence → session → report:
+ * - "Login" / "Successful login": step 0 en pass (con evidencia de imagen),
+ *   step 1 en skip.
+ * - "Checkout" / "Pay with card": step 0 en pass, step 1 en fail (con
+ *   defectDescription y evidencia de imagen) — así el HTML de detalle de
+ *   "Checkout" debe mostrar tanto el defecto resaltado como una evidencia.
+ */
+function makeFeatures(): ParsedFeature[] {
+  return [
+    {
+      name: 'Login',
+      description: '',
+      tags: [],
+      language: 'en',
+      filePath: 'login.feature',
+      scenarios: [
+        {
+          name: 'Successful login',
+          tags: [],
+          isOutlineExample: false,
+          steps: [
+            { keyword: 'Given', text: 'a registered user', fromBackground: false },
+            { keyword: 'When', text: 'they submit valid credentials', fromBackground: false },
+          ],
+        },
+      ],
+    },
+    {
+      name: 'Checkout',
+      description: '',
+      tags: [],
+      language: 'en',
+      filePath: 'checkout.feature',
+      scenarios: [
+        {
+          name: 'Pay with card',
+          tags: [],
+          isOutlineExample: false,
+          steps: [
+            { keyword: 'Given', text: 'items in the cart', fromBackground: false },
+            { keyword: 'When', text: 'they submit a valid card', fromBackground: false },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+describe('createReportGenerator + createHandlebarsTemplateEngine (integración con evidence/session reales)', () => {
+  let workDir: string;
+  let evidenceBaseDir: string;
+  let outputDir: string;
+  let sessionState: SessionState;
+  let loginEvidence: EvidenceFile;
+  let defectEvidence: EvidenceFile;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), 'qa-report-'));
+    evidenceBaseDir = join(workDir, 'project');
+    outputDir = join(workDir, 'reports', 'latest');
+
+    const sessionEngine = createSessionEngine(
+      join(evidenceBaseDir, '.qa-evidence-reporter/session.json'),
+    );
+    const created = await sessionEngine.createSession(makeFeatures(), 'Proyecto Demo');
+
+    const loginStep0 = created.selectedFeatures[0]!.scenarios[0]!.steps[0]!;
+    const loginStep1 = created.selectedFeatures[0]!.scenarios[0]!.steps[1]!;
+    const checkoutStep0 = created.selectedFeatures[1]!.scenarios[0]!.steps[0]!;
+    const checkoutStep1 = created.selectedFeatures[1]!.scenarios[0]!.steps[1]!;
+    const checkoutFeatureId = created.selectedFeatures[1]!.id;
+    const checkoutScenarioId = created.selectedFeatures[1]!.scenarios[0]!.id;
+    const loginFeatureId = created.selectedFeatures[0]!.id;
+    const loginScenarioId = created.selectedFeatures[0]!.scenarios[0]!.id;
+
+    // Evidencia real, guardada con el EvidenceStore de fase 2 (integración
+    // real evidence → report, no un mock de archivos).
+    const evidenceStore = createEvidenceStore(evidenceBaseDir);
+    loginEvidence = await evidenceStore.save({
+      featureId: loginFeatureId,
+      scenarioId: loginScenarioId,
+      stepId: loginStep0.id,
+      originalFilename: 'login-ok.png',
+      buffer: await makePngBuffer(),
+    });
+    defectEvidence = await evidenceStore.save({
+      featureId: checkoutFeatureId,
+      scenarioId: checkoutScenarioId,
+      stepId: checkoutStep1.id,
+      originalFilename: 'boton-roto.png',
+      buffer: await makePngBuffer(),
+    });
+
+    await sessionEngine.setStepResult(loginStep0.id, 'pass');
+    await sessionEngine.addEvidence(loginStep0.id, loginEvidence.id);
+    await sessionEngine.setStepResult(loginStep1.id, 'skip');
+    await sessionEngine.setStepResult(checkoutStep0.id, 'pass');
+    await sessionEngine.setStepResult(checkoutStep1.id, 'fail', {
+      defectDescription: 'El botón de pago no responde al hacer click.',
+    });
+    await sessionEngine.addEvidence(checkoutStep1.id, defectEvidence.id);
+
+    sessionState = sessionEngine.getState();
+  });
+
+  afterEach(async () => {
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  it('genera index.html y features/{slug}.html para cada feature', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+
+    await generator.generate(sessionState, outputDir);
+
+    expect(existsSync(join(outputDir, 'index.html'))).toBe(true);
+    for (const feature of sessionState.selectedFeatures) {
+      expect(existsSync(join(outputDir, 'features', `${feature.id}.html`))).toBe(true);
+    }
+  });
+
+  it('el index.html muestra los nombres de feature, badges de resultado y % correcto', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+
+    expect(indexHtml).toContain('Proyecto Demo');
+    expect(indexHtml).toContain('Login');
+    expect(indexHtml).toContain('Checkout');
+    // Login: 1 pass + 1 skip de 2 steps -> 50% de éxito. Checkout: 1 pass + 1
+    // fail de 2 -> 50% también. La sesión completa: 2 pass, 1 fail, 1 skip
+    // de 4 steps -> 50% pass rate global.
+    expect(indexHtml).toContain('50%');
+    expect(indexHtml).toMatch(/qa-badge--fail/);
+    expect(indexHtml).toContain('features/f0-login.html');
+    expect(indexHtml).toContain('features/f1-checkout.html');
+  });
+
+  it('el detalle de Checkout muestra el badge fail, la descripción del defecto resaltada y la evidencia copiada', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    const checkoutHtml = await readFile(join(outputDir, 'features', 'f1-checkout.html'), 'utf-8');
+
+    expect(checkoutHtml).toContain('Pay with card');
+    expect(checkoutHtml).toMatch(/qa-badge--fail/);
+    expect(checkoutHtml).toContain('El botón de pago no responde al hacer click.');
+    expect(checkoutHtml).toMatch(/class="qa-defect"/);
+
+    // La evidencia referenciada aparece en el HTML con una ruta relativa
+    // (basePath '../' porque esta página vive en outputDir/features/).
+    const expectedEvidenceHref = `../assets/${defectEvidence.path}`;
+    expect(checkoutHtml).toContain(expectedEvidenceHref);
+
+    // Y existe físicamente copiada dentro de outputDir/assets/...
+    expect(existsSync(join(outputDir, 'assets', defectEvidence.path))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', defectEvidence.thumbnailPath!))).toBe(true);
+  });
+
+  it('el detalle de Login muestra la evidencia de imagen del step en pass', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
+    expect(loginHtml).toContain('login-ok.png');
+    expect(existsSync(join(outputDir, 'assets', loginEvidence.path))).toBe(true);
+  });
+
+  it('no genera ninguna referencia http(s):// ni a CDNs externos en el HTML generado', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    const checkoutHtml = await readFile(join(outputDir, 'features', 'f1-checkout.html'), 'utf-8');
+
+    for (const html of [indexHtml, checkoutHtml]) {
+      // El namespace XML del SVG (`xmlns="http://www.w3.org/2000/svg"`) es
+      // una declaración estática, no una petición de red — se descarta antes
+      // de buscar URLs externas reales (`<script src="http...">`,
+      // `<link href="http...">`, etc.).
+      const withoutSvgNamespace = html.replace(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, '');
+      expect(withoutSvgNamespace).not.toMatch(/https?:\/\//i);
+      expect(html.toLowerCase()).not.toContain('cdn.');
+    }
+  });
+
+  it('copia el ícono genérico de video y otros assets estáticos del template a outputDir/assets/', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    expect(existsSync(join(outputDir, 'assets', 'video-icon.svg'))).toBe(true);
+  });
+
+  it('rechaza (con ReportGenerationError) si el templateDir no provee los templates obligatorios', async () => {
+    const emptyTemplateDir = join(workDir, 'templates-vacios');
+    const templateEngine = createHandlebarsTemplateEngine(emptyTemplateDir);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+    );
+
+    await expect(generator.generate(sessionState, outputDir)).rejects.toBeInstanceOf(
+      ReportGenerationError,
+    );
+  });
+
+  it('envuelve un error de I/O real (outputDir no se puede crear) en ReportGenerationError', async () => {
+    // Un archivo regular en el lugar donde generate() necesita crear un
+    // directorio produce un ENOTDIR real de node:fs — se usa esto en vez de
+    // un mock para probar el envoltorio con una causa de I/O genuina.
+    const { writeFile } = await import('node:fs/promises');
+    const blockerPath = join(workDir, 'blocker');
+    await writeFile(blockerPath, 'no soy un directorio');
+
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+    );
+
+    await expect(
+      generator.generate(sessionState, join(blockerPath, 'reports')),
+    ).rejects.toBeInstanceOf(ReportGenerationError);
+  });
+});

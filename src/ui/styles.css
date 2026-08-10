@@ -1,0 +1,660 @@
+/*
+ * Estilos propios de src/ui/ (CSS plano, sin librería de UI — ver
+ * ARCHITECTURE.md, consigna de esta fase: "sin librerías de UI pesadas").
+ * Se usan custom properties (`--*`) por tema en vez de CSS Modules por Vite
+ * porque toda la UI es un único bundle chico (no hay riesgo real de
+ * colisión de nombres de clase entre componentes) y las variables de tema
+ * son más simples de razonar en un solo archivo global que repartidas en
+ * módulos por componente.
+ *
+ * Paleta de resultado (pass/fail/skip/pending): ver `src/ui/colors.ts`
+ * (duplicado documentado de `core/report/charts.ts`, `RESULT_COLORS`) — acá
+ * solo se usan a través de `style` inline (StepTree, badges), no como clases
+ * CSS, así que no hace falta repetirlos aquí también.
+ */
+
+:root {
+  --bg: #f8fafc;
+  --bg-elevated: #ffffff;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --danger: #b91c1c;
+  --success: #15803d;
+  --warning: #b45309;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0b1220;
+  --bg-elevated: #131c2e;
+  --text: #e5e9f0;
+  --text-muted: #94a3b8;
+  --border: #263143;
+  --accent: #60a5fa;
+  --accent-contrast: #0b1220;
+  --danger: #f87171;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0b1220;
+    --bg-elevated: #131c2e;
+    --text: #e5e9f0;
+    --text-muted: #94a3b8;
+    --border: #263143;
+    --accent: #60a5fa;
+    --accent-contrast: #0b1220;
+    --danger: #f87171;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-width: 1280px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.app-header__title {
+  font-size: 1.1rem;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Botones */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.button--link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0.25rem 0;
+}
+
+.button--pass {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.button--fail {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.button--skip {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.theme-toggle {
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+/* Banners de error / sesión */
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elevated));
+  border-bottom: 1px solid var(--danger);
+  color: var(--text);
+}
+
+.error-banner__code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.error-banner__message {
+  flex: 1;
+}
+
+.error-banner__dismiss {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, var(--bg-elevated));
+  margin-bottom: 1.25rem;
+}
+
+.session-banner--info {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+}
+
+.session-banner p {
+  margin: 0;
+}
+
+/* Selección de features */
+
+.feature-select__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.feature-list {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.feature-card {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+
+.feature-card__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+}
+
+.feature-card__label input[type='checkbox'] {
+  margin-top: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.feature-card__body {
+  flex: 1;
+}
+
+.feature-card__name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.feature-card__description {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.feature-card__meta {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.tag {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--border);
+  font-size: 0.75rem;
+}
+
+.feature-select__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Runner */
+
+.runner {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.runner__sidebar {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--bg-elevated);
+  padding: 0.75rem;
+}
+
+.runner__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.runner__nav {
+  display: flex;
+  justify-content: space-between;
+}
+
+.progress-header {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.progress-header__labels {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.progress-header__percent {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.progress-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-bar__fill {
+  height: 100%;
+  background: var(--success);
+  transition: width 0.2s ease;
+}
+
+.current-step {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.current-step__scenario {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.current-step__text {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.current-step__keyword {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+/* Evidencia */
+
+.evidence-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.evidence-dropzone--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.evidence-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.evidence-item {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.evidence-item__thumb {
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+  display: block;
+  background: var(--border);
+}
+
+.evidence-item__thumb--icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+}
+
+.evidence-item__meta {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.5rem;
+  gap: 0.1rem;
+}
+
+.evidence-item__name {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-item__size {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.evidence-item__remove {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  line-height: 1;
+  font-size: 1rem;
+}
+
+/* Notas / resultado */
+
+.step-result-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field__label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.field__required {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.field__input {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+
+.step-result-panel__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.report-panel__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Árbol lateral */
+
+.step-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.step-tree__feature-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.25rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+  text-align: left;
+}
+
+.step-tree__caret {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  width: 0.9rem;
+}
+
+.step-tree__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.step-tree__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-tree__scenarios {
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step-tree__scenario-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.25rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.step-tree__steps {
+  list-style: none;
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.step-tree__step {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.2rem 0.25rem;
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.step-tree__step:hover {
+  background: var(--border);
+}
+
+.step-tree__step--current {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 700;
+}
+
+.step-tree__step-keyword {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.step-tree__step-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

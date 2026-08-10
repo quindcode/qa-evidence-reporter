@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reporte QA — {{project.projectName}}</title>
+    {{> theme-init}}
+    {{> styles}}
+  </head>
+  <body>
+    <div class="qa-container">
+      <header class="qa-topbar">
+        <div>
+          <h1>{{project.projectName}}</h1>
+          <p class="qa-meta">
+            Generado el {{formatDate project.generatedAt}}
+            {{#if project.executedBy}} · Ejecutado por {{project.executedBy}}{{/if}}
+          </p>
+        </div>
+        <button
+          id="qa-theme-toggle"
+          class="qa-theme-toggle"
+          type="button"
+          aria-label="Cambiar entre tema claro y oscuro"
+        >
+          🌓 Tema
+        </button>
+      </header>
+
+      <section class="qa-card" aria-labelledby="qa-dashboard-heading">
+        <h2 id="qa-dashboard-heading">Resumen general</h2>
+        <div class="qa-dashboard-grid">
+          <div>
+            {{{dashboard.distributionDonutSvg}}}
+            {{> legend summary=summary}}
+          </div>
+          <div class="qa-progress-block">
+            <h3>Progreso de la sesión ({{summary.completionPercent}}% completado)</h3>
+            {{{dashboard.progressBarSvg}}}
+            <p class="qa-meta">
+              {{summary.total}} step{{pluralize summary.total}} en total ·
+              {{summary.pass}} aprobado{{pluralize summary.pass}} ·
+              {{summary.fail}} fallido{{pluralize summary.fail}} ·
+              {{summary.skip}} omitido{{pluralize summary.skip}} ·
+              {{summary.pending}} pendiente{{pluralize summary.pending}}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="qa-card" aria-labelledby="qa-features-heading">
+        <h2 id="qa-features-heading">Features</h2>
+        {{#if features.length}}
+          <div class="qa-table-wrapper">
+            <table class="qa-feature-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>Resultado</th>
+                  <th>% de éxito</th>
+                  <th>Steps</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{#each features}}
+                  <tr>
+                    <td>{{name}}</td>
+                    <td>{{> badge}}</td>
+                    <td>{{summary.passRatePercent}}%</td>
+                    <td>{{summary.pass}}/{{summary.total}}</td>
+                    <td><a href="{{@root.basePath}}{{detailPath}}">Ver detalle</a></td>
+                  </tr>
+                {{/each}}
+              </tbody>
+            </table>
+          </div>
+        {{else}}
+          <p class="qa-empty">No hay features seleccionadas en esta sesión.</p>
+        {{/if}}
+      </section>
+    </div>
+    {{> theme-toggle-script}}
+  </body>
+</html>

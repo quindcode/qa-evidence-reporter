@@ -1,0 +1,19 @@
+<script>
+  // Se ejecuta síncronamente en <head>, ANTES de pintar el <body>, para
+  // aplicar el tema guardado sin parpadeo (flash of wrong theme). Si no hay
+  // nada guardado en localStorage, no se toca `data-theme` y manda
+  // `prefers-color-scheme` (ver partials/styles.hbs). Sin dependencias
+  // externas (ver ARCHITECTURE.md: JS inline, sin librerías).
+  (function () {
+    try {
+      var saved = localStorage.getItem('qa-evidence-reporter-theme');
+      if (saved === 'light' || saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', saved);
+      }
+    } catch (error) {
+      // localStorage puede no estar disponible (p. ej. almacenamiento
+      // deshabilitado al abrir el reporte con file:// en algunos
+      // navegadores). Degradar a prefers-color-scheme, nunca romper la página.
+    }
+  })();
+</script>

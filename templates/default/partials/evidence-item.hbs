@@ -1,0 +1,20 @@
+<div class="qa-evidence-item">
+  {{#if (eq kind "image")}}
+    <a href="{{@root.basePath}}{{path}}" target="_blank" rel="noopener">
+      <img
+        src="{{@root.basePath}}{{#if thumbnailPath}}{{thumbnailPath}}{{else}}{{path}}{{/if}}"
+        alt="Evidencia: {{originalFilename}}"
+        loading="lazy"
+      />
+    </a>
+  {{else if (eq kind "video")}}
+    <video controls preload="metadata" poster="{{@root.basePath}}assets/video-icon.svg">
+      <source src="{{@root.basePath}}{{path}}" />
+      Tu navegador no puede reproducir este video.
+      <a href="{{@root.basePath}}{{path}}">Abrir "{{originalFilename}}"</a>
+    </video>
+  {{else}}
+    <a href="{{@root.basePath}}{{path}}" target="_blank" rel="noopener">Abrir archivo ({{kind}})</a>
+  {{/if}}
+  <span class="qa-evidence-filename" title="{{originalFilename}}">{{originalFilename}}</span>
+</div>
