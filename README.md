@@ -12,79 +12,49 @@ a paso desde una UI web local, y generar un **reporte HTML auto-contenido**
 
 ## Instalación
 
-```bash
-npm install -g qa-evidence-reporter
-```
-
-> **Nota:** este paquete todavía no está publicado en el registro de npm — el
-> comando de arriba es el flujo final una vez publicado. Mientras tanto,
-> instalalo desde el repo (ver sección siguiente).
-
-Requiere Node.js 18 LTS o superior. No hay dependencias nativas ni binarios
-externos que instalar aparte (thumbnails de imagen con `jimp`, puro
-JavaScript; ver `ARCHITECTURE.md` para el resto del stack).
-
-## Probarlo desde el repo (para revisores / sin publicar en npm)
-
-Pensado para alguien que solo quiere clonar y ver la herramienta andando, sin
-instalar nada de forma global ni tocar otros proyectos.
+Este paquete todavía no está publicado en el registro de npm, así que hoy se
+instala desde el código fuente. Requiere **Node.js 18 LTS o superior** — no
+hay dependencias nativas ni binarios externos que instalar aparte (los
+thumbnails de imagen se generan con `jimp`, puro JavaScript).
 
 ```bash
 git clone https://github.com/quindcode/qa-evidence-reporter.git
 cd qa-evidence-reporter
 npm install
-npm run build          # compila CLI/server (tsc) + la UI (vite build)
+npm run build   # compila CLI/server (tsc) + la UI (vite build)
+npm link        # deja el comando "qa-evidence-reporter" disponible en cualquier carpeta
 ```
 
-**Camino más rápido — demo con datos reales (`sample-project/`):**
+Confirmá que quedó instalado:
 
 ```bash
-cd sample-project
-node ../dist/adapters/cli/index.js run
+qa-evidence-reporter --version
 ```
 
-Esto levanta el runner en `http://localhost:4173` con 3 features ya escritos
-(Login, Búsqueda, Carrito de compras — 12 escenarios) para poder seleccionar,
-ejecutar steps, adjuntar evidencia y generar un reporte sin escribir nada
-antes. Ctrl+C en la terminal lo detiene.
-
-**Camino "de cero", como lo usaría un QA real:**
-
-```bash
-mkdir mi-prueba-qa && cd mi-prueba-qa
-node ../dist/adapters/cli/index.js init
-# escribí un .feature en features/, o copiá alguno de sample-project/features/
-node ../dist/adapters/cli/index.js run
-```
-
-**Para tener el comando `qa-evidence-reporter` corto** (en vez de
-`node ../dist/adapters/cli/index.js`), desde la raíz del repo:
-
-```bash
-npm link
-qa-evidence-reporter run   # ahora funciona desde cualquier carpeta
-```
-
-### Cómo dar feedback
-
-Cualquier hallazgo (bug, algo confuso en el flujo, una mejora) — abrilo como
-[Issue en el repo](../../issues) para que quede registrado y se pueda
-priorizar. Si es sobre el reporte HTML generado, adjuntá el `.zip` exportado
-(botón "Exportar como ZIP") para que se pueda reproducir exactamente lo que
-viste.
+> Cuando el paquete se publique en el registro de npm, este paso se va a
+> reducir a `npm install -g qa-evidence-reporter` — mientras tanto, `npm link`
+> desde el repo clonado cumple exactamente la misma función.
 
 ## Flujo de uso
 
+Tu proyecto de QA (los `.feature`, la evidencia, los reportes) **vive en una
+carpeta separada del repo de esta herramienta** — el repo es el programa, no
+el lugar donde guardás tus casos de prueba reales.
+
 ```bash
-# 1. Dentro de la carpeta de tu proyecto de QA (puede estar vacía):
+# 1. Creá (o entrá a) la carpeta de tu proyecto de QA, en cualquier lugar de tu máquina:
+mkdir mi-proyecto-qa && cd mi-proyecto-qa
+
+# 2. Inicializala:
 qa-evidence-reporter init
 
-# 2. Escribí/editá tus .feature en features/ (init deja uno de ejemplo).
+# 3. Escribí tus .feature en features/ (ver la sección siguiente para la
+#    estructura exacta) — init deja uno de ejemplo que podés editar o borrar.
 
-# 3. Levantá el runner interactivo:
+# 4. Levantá el runner interactivo:
 qa-evidence-reporter run
 
-# 4. Cuando termines la sesión (o en cualquier momento, sobre el progreso
+# 5. Cuando termines la sesión (o en cualquier momento, sobre el progreso
 #    ya guardado), generá el reporte HTML final:
 qa-evidence-reporter report
 ```
@@ -102,15 +72,89 @@ qa-evidence-reporter init --name "Mi Proyecto" # opcional, si no se toma el nomb
 qa-evidence-reporter init --force              # sobreescribe qa-config.json si ya existe
 ```
 
-### 2. Escribir/editar `.feature`
+### 2. Escribir tus `.feature`
 
-Cualquier `.feature` válido en Gherkin, en `features/` (subcarpetas
-permitidas). Soporta español (agregando `# language: es` como primera línea
-del archivo) e inglés (por defecto), tags (`@smoke`, `@regression`, etc.),
-`Background`/`Antecedentes` y `Scenario Outline`/`Esquema del escenario` con
-`Examples`/`Ejemplos` (cada fila se ejecuta como un escenario concreto
-independiente). Ver `sample-project/features/*.feature` para ejemplos reales
-de las tres variantes.
+**Importante: el parser solo entiende Gherkin.** Cualquier archivo `.feature`
+que no use las palabras clave de Gherkin (`Feature`, `Scenario`, `Given`,
+`When`, `Then`, etc. — lista completa abajo) no es un formato válido: no se
+puede escribir en texto libre, Markdown, ni una lista de pasos cualquiera.
+Si el archivo no respeta la sintaxis, `run`/`report` van a fallar con un
+error claro (`FEATURE_PARSE_ERROR`) señalando el archivo y el motivo.
+
+**Estructura mínima válida** — un archivo `.feature` necesita, como mínimo,
+una línea `Feature:` con un nombre, y al menos un `Scenario:` con al menos un
+step:
+
+```gherkin
+Feature: Nombre de la funcionalidad a probar
+
+  Scenario: Nombre de un caso de prueba concreto
+    Given una condición inicial
+    Then un resultado esperado
+```
+
+**Ejemplo completo**, con todo lo que el parser soporta (guardalo como
+`features/login.feature`):
+
+```gherkin
+# Los tags se muestran en el reporte y en el selector del runner
+# (no filtran la ejecución todavía — ver "Usarlo para un test plan completo").
+@smoke
+Feature: Inicio de sesión
+  Como usuario registrado
+  quiero iniciar sesión con mis credenciales
+  para acceder a mi cuenta.
+
+  # Background: steps que se repiten al principio de cada Scenario de este Feature.
+  Background:
+    Given estoy en la página de inicio de sesión
+
+  @regression
+  Scenario: Inicio de sesión exitoso con credenciales válidas
+    When ingreso un usuario y contraseña válidos
+    And hago clic en "Ingresar"
+    Then accedo correctamente a mi cuenta
+    And veo mi nombre en la cabecera del sitio
+
+  Scenario: Inicio de sesión fallido con contraseña incorrecta
+    When ingreso un usuario válido con una contraseña incorrecta
+    And hago clic en "Ingresar"
+    Then veo un mensaje de error indicando credenciales inválidas
+
+  # Scenario Outline + Examples: el mismo caso se ejecuta una vez por cada
+  # fila de la tabla, sustituyendo los valores entre <> en cada step.
+  Scenario Outline: Validación de campos obligatorios
+    When dejo el campo "<campo>" vacío
+    And hago clic en "Ingresar"
+    Then veo un mensaje pidiendo completar "<campo>"
+
+    Examples:
+      | campo       |
+      | usuario     |
+      | contraseña  |
+```
+
+**Palabras clave de Gherkin que el parser reconoce:**
+
+| Categoría   | Palabras clave                                                                     |
+| ----------- | ---------------------------------------------------------------------------------- |
+| Encabezados | `Feature`, `Background`, `Scenario`, `Scenario Outline`                            |
+| Steps       | `Given`, `When`, `Then`, `And`, `But`                                              |
+| Datos       | `Examples`, con una tabla de valores debajo (usada junto a `Scenario Outline`)     |
+| Tags        | `@cualquier-palabra` (ej. `@smoke`, `@regression`) antes de `Feature` o `Scenario` |
+
+**En español:** agregá `# language: es` como primera línea del archivo para
+poder usar los equivalentes en español (`Característica`, `Antecedentes`,
+`Escenario`, `Esquema del escenario`, `Dado`, `Cuando`, `Entonces`, `Y`,
+`Pero`, `Ejemplos`) en vez de las palabras en inglés. Sin esa línea, el
+archivo se interpreta en inglés por defecto (que siempre funciona, con o sin
+la directiva). Podés mezclar archivos en español e inglés dentro del mismo
+proyecto (cada `.feature` declara su propio idioma). Más ejemplos reales de
+las tres variantes (simple, con `Background`, con `Scenario Outline`) en
+[`sample-project/features/`](./sample-project/features/).
+
+Subcarpetas dentro de `features/` están permitidas (se recorren
+recursivamente) — útil para organizar por módulo o área del proyecto.
 
 ### 3. `run`
 
@@ -281,14 +325,24 @@ defaults); `qa-evidence-reporter init` escribe siempre el archivo completo.
 | `logging.level`           | `"debug" \| "info" \| "warn" \| "error"` | Nivel de log interno (diagnóstico, no la salida de usuario de los comandos).                         |
 | `reportTemplate`          | `string \| null`                         | Ruta a un template Handlebars custom, o `null` para usar el template embebido (`templates/default`). |
 
-## Sample project
+## Proyecto de ejemplo (opcional)
 
-`sample-project/` contiene un proyecto de ejemplo completo (3 `.feature`
-reales, mezclando español e inglés, con tags y un `Scenario Outline`) y
+No hace falta para usar la herramienta en un proyecto real — es solo
+material de referencia. `sample-project/` (dentro de este repo) contiene un
+proyecto completo de ejemplo (3 `.feature` reales, mezclando español e
+inglés, con tags, `Background` y `Scenario Outline`) y
 `sample-project/simulate-session.mjs`, un script que ejercita el server real
-de punta a punta (selección, evidencia real, resultados mixtos, reporte, ZIP)
-sin necesitar un navegador. Ver los comentarios de ese archivo para el detalle
-de dónde queda el reporte generado.
+de punta a punta (selección, evidencia real, resultados mixtos, reporte,
+ZIP) sin necesitar un navegador. Útil como referencia de sintaxis Gherkin o
+para explorar rápido cómo se ve un reporte ya generado.
+
+## Cómo dar feedback
+
+Cualquier hallazgo (bug, algo confuso, una mejora) — abrilo como
+[Issue en el repo](https://github.com/quindcode/qa-evidence-reporter/issues)
+para que quede registrado y se pueda priorizar. Si es sobre un reporte HTML
+generado, adjuntá el `.zip` exportado (botón "Exportar como ZIP") para poder
+reproducir exactamente lo que viste.
 
 ## Arquitectura (resumen)
 
