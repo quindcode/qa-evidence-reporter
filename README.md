@@ -139,6 +139,92 @@ la UI del runner (o llamando a `POST /api/report/generate` +
 `GET /api/report/export-zip`) también se puede exportar como `.zip` para
 compartirlo.
 
+## Usarlo para ejecutar un test plan completo
+
+La herramienta no reemplaza un test plan formal (objetivos de negocio,
+riesgos, cronograma, criterios de entrada/salida siguen siendo una decisión
+tuya, documentada aparte) — lo que hace es estandarizar la **ejecución**,
+**evidencia** y **reporte** de un conjunto de casos ya definidos como
+`.feature`. Esta es la forma recomendada de usarla para ese fin, y las
+trampas reales del modelo actual que conviene conocer antes de empezar.
+
+### Paso a paso
+
+1. **Definí el alcance como estructura de carpetas/archivos, no solo como
+   tags.** La selección de qué correr en `run` es **por archivo `.feature`
+   completo** (todos sus scenarios se incluyen, no hay selección por
+   scenario ni por tag desde la UI todavía). Si tu test plan necesita poder
+   ejecutarse por partes (por ejemplo "solo smoke" o "solo el módulo de
+   pagos"), organizá esa división como archivos/carpetas separados dentro de
+   `features/` (`parseDirectory` es recursivo), no confíes solo en tags para
+   poder cortar el alcance después.
+2. **Escribí los `.feature`** cubriendo todo el alcance del plan: usá
+   `Background` para precondiciones compartidas dentro de un feature,
+   `Scenario Outline` + `Examples` para variantes de datos, y tags
+   (`@smoke`, `@regression`, `@critico`, lo que tenga sentido para tu equipo)
+   para clasificar — hoy son informativos (se muestran en el reporte y en el
+   selector) pero no filtran la ejecución.
+3. **Configurá `qa-config.json`** antes de arrancar: `projectName`, `team`
+   (quiénes ejecutan), y `evidence.maxFileSizeMB`/`evidence.allowedFormats`
+   si vas a adjuntar screen recordings pesados o formatos fuera del default.
+4. **`init`** (si el proyecto todavía no existe) y ubicá tus `.feature` en
+   `features/`.
+5. **`run`**, seleccioná los features que forman esta corrida del plan, y
+   recorré cada step adjuntando evidencia real, marcando el resultado y
+   completando notas/descripción de defecto donde corresponda. Si el plan es
+   grande, hacelo en varias sesiones de trabajo — el progreso se autoguarda
+   y `run` retoma exactamente donde quedaste.
+6. **Al completar la corrida (o en cualquier corte que necesites reportar
+   parcialmente)**, generá el reporte y **exportá el `.zip` inmediatamente**
+   — es tu snapshot de esa corrida.
+7. **Archivá ese `.zip` con un nombre que identifique la corrida** (fecha,
+   sprint, versión — `reports/report-2026-08-10-sprint-14.zip`, por
+   ejemplo) ANTES de volver a correr `report` sobre una sesión nueva (ver
+   el punto 2 de "qué NO hacer" — se sobreescribe).
+8. **Compartí el `.zip`** (o el link al `reports-static/` si el server
+   sigue corriendo) con tus líderes, y usá los Issues del repo para
+   centralizar el feedback que te den.
+
+### Qué NO hacer
+
+- **No edites los `.feature` esperando que una sesión ya en curso los
+  "recoja".** Al seleccionar features, sus scenarios/steps quedan
+  congelados dentro de `session.json` en ese momento — editar el archivo
+  fuente después no actualiza la sesión activa. Terminá o descartá la
+  sesión actual (ver punto siguiente) antes de editar y volver a
+  seleccionar.
+- **No vuelvas a pasar por la pantalla de selección "para actualizar" sin
+  pensarlo.** Si hay una sesión sin completar, `run` te va a pedir
+  confirmación explícita porque **selecciona de nuevo = descarta el
+  progreso no exportado a un reporte**. Si no estás seguro de haber
+  guardado lo que ya avanzaste, generá y exportá el reporte primero.
+- **No corras dos instancias de `run` en paralelo sobre el mismo
+  proyecto.** Todas comparten el mismo `.qa-evidence-reporter/session.json`
+  sin bloqueo de archivo — escrituras concurrentes se pueden pisar entre
+  sí. Un server por proyecto a la vez.
+- **No asumas que un reporte anterior queda guardado solo.** `report`
+  escribe siempre sobre la misma carpeta `reports/`; generar uno nuevo
+  sobreescribe `index.html` y las páginas de feature. Si necesitás
+  historial entre corridas (por sprint, por release), archivá el `.zip`
+  exportado antes de la siguiente — la herramienta no versiona reportes por
+  vos.
+- **No adjuntes lo que el `qa-config.json` no permite** (formatos fuera de
+  `evidence.allowedFormats`, o archivos más grandes que
+  `evidence.maxFileSizeMB`) esperando que "simplemente funcione" — se
+  rechazan con error (`415`/`413`); ajustá la config antes si lo necesitás.
+- **No esperes trazabilidad automática a Jira/Azure DevOps/etc.** La
+  "descripción del defecto" vive solo en la sesión y en el reporte; si tu
+  proceso requiere un ticket, copiala manualmente al sistema que usen.
+- **No la uses como el único documento del test plan.** Cubre ejecución +
+  evidencia + reporte de casos ya escritos como `.feature`, no la
+  planificación (objetivos, riesgos, cronograma, criterios de
+  entrada/salida) ni la gestión de casos fuera de Gherkin — eso seguí
+  documentándolo donde ya lo hacías.
+- **No dejes que dos personas ejecuten sobre el mismo server sin
+  coordinarse.** Es una sesión compartida en tiempo real: dos personas
+  marcando resultados o navegando steps a la vez sobre el mismo proceso van
+  a pisarse (última acción gana, sin "carriles" por usuario).
+
 ## Atajos de teclado (runner)
 
 Activos mientras el foco NO esté sobre un campo de texto (notas, descripción
