@@ -30,7 +30,7 @@ Pensado para alguien que solo quiere clonar y ver la herramienta andando, sin
 instalar nada de forma global ni tocar otros proyectos.
 
 ```bash
-git clone <URL-del-repo>
+git clone https://github.com/quindcode/qa-evidence-reporter.git
 cd qa-evidence-reporter
 npm install
 npm run build          # compila CLI/server (tsc) + la UI (vite build)

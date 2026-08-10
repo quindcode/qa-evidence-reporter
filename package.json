@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Herramienta para capturar evidencia de QA manual sobre features Gherkin y generar reportes HTML auto-contenidos.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quindcode/qa-evidence-reporter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/quindcode/qa-evidence-reporter/issues"
+  },
+  "homepage": "https://github.com/quindcode/qa-evidence-reporter#readme",
   "bin": {
     "qa-evidence-reporter": "dist/adapters/cli/index.js"
   },
