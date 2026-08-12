@@ -79,9 +79,37 @@
     box-sizing: border-box;
   }
 
+  /* Oculto visualmente pero disponible para lectores de pantalla — el hero
+     del dashboard (ver `.qa-hero`) ya no tiene un <h2> visible, pero la
+     sección igual necesita uno accesible. */
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  /*
+   * Dos familias, roles distintos (ver skill frontend-design): serif para
+   * cualquier NÚMERO que sea el protagonista de su bloque (el % del hero,
+   * el % de cada feature) — le da al reporte un aire de "documento/informe
+   * formal" en vez de "panel de admin"; sans para todo lo demás (texto,
+   * etiquetas, UI). Ambas son pilas de fuentes del sistema — CERO fuentes
+   * externas/embebidas, el reporte sigue abriendo offline sin depender de
+   * que la fuente exista en el archivo (ver ARCHITECTURE.md, "Reporte
+   * HTML").
+   */
+  :root {
+    --qa-font-body: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --qa-font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman',
+      serif;
+  }
+
   body {
     margin: 0;
-    font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--qa-font-body);
     background: var(--qa-bg);
     color: var(--qa-fg);
     line-height: 1.5;
@@ -103,12 +131,24 @@
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
   }
 
   .qa-topbar h1 {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
+    margin: 0.15rem 0 0;
+    letter-spacing: -0.01em;
+  }
+
+  /* Etiqueta pequeña arriba del título (ver partials/header.hbs) — enmarca
+     el documento como "esto es un reporte de ejecución", no decoración. */
+  .qa-eyebrow {
     margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--qa-fg-muted);
   }
 
   .qa-meta {
@@ -187,8 +227,14 @@
     }
 
     .qa-brandbar__text h1 {
-      font-size: 1.5rem;
-      margin: 0;
+      font-size: 1.6rem;
+      margin: 0.15rem 0 0;
+      letter-spacing: -0.01em;
+    }
+
+    .qa-eyebrow--onbrand {
+      color: {{project.branding.primaryContrast}};
+      opacity: 0.75;
     }
 
     .qa-meta--onbrand {
@@ -219,16 +265,57 @@
   .qa-card {
     background: var(--qa-bg-elevated);
     border: 1px solid var(--qa-border);
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 14px;
+    padding: 28px;
     margin-bottom: 24px;
   }
 
-  .qa-dashboard-grid {
+  .qa-section-heading {
+    margin: 0 0 20px;
+    font-size: 1.05rem;
+  }
+
+  /*
+   * El "hero": el % de aprobación es el protagonista de todo el reporte —
+   * lo primero que se lee, en la tipografía serif (ver `--qa-font-display`
+   * arriba). El donut queda como visual de acompañamiento, más chico que
+   * antes (ver `renderDonutChart(summary, { size: 168, ... })` en
+   * `reportGenerator.ts`) — ya no compite con el número por protagonismo.
+   */
+  .qa-hero {
     display: flex;
     flex-wrap: wrap;
-    gap: 32px;
     align-items: center;
+    gap: 36px;
+  }
+
+  .qa-hero__stat {
+    flex-shrink: 0;
+  }
+
+  .qa-hero__number {
+    margin: 4px 0 0;
+    font-family: var(--qa-font-display);
+    font-size: 4.25rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .qa-hero__number span {
+    font-size: 2.25rem;
+    font-weight: 500;
+    opacity: 0.7;
+  }
+
+  .qa-hero__caption {
+    margin: 6px 0 0;
+    color: var(--qa-fg-muted);
+    max-width: 22ch;
+  }
+
+  .qa-hero__chart {
+    flex-shrink: 0;
   }
 
   /* Los SVG del dashboard (donut y barra de progreso, ver core/report/charts.ts)
@@ -236,15 +323,23 @@
      (p. ej. si alguien los abre fuera de este template). Acá se los fuerza a
      escalar dentro de su contenedor usando el viewBox — si no, en pantallas
      angostas la barra de 480px de ancho se sale del .qa-card. */
-  .qa-dashboard-grid svg {
+  .qa-hero svg {
     display: block;
     max-width: 100%;
     height: auto;
   }
 
+  .qa-hero__side {
+    flex: 1;
+    min-width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
   .qa-legend {
     list-style: none;
-    margin: 12px 0 0;
+    margin: 0;
     padding: 0;
     display: flex;
     flex-wrap: wrap;
@@ -255,12 +350,13 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
+    color: var(--qa-fg-muted);
   }
 
   .qa-swatch {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     border-radius: 3px;
     display: inline-block;
     flex-shrink: 0;
@@ -279,48 +375,93 @@
     background: var(--qa-pending);
   }
 
-  .qa-progress-block {
-    flex: 1;
-    min-width: 260px;
+  .qa-progress-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.85rem;
+    color: var(--qa-fg-muted);
+    margin-bottom: 6px;
   }
 
-  .qa-progress-block h3 {
-    margin: 0 0 8px;
+  .qa-progress-label strong {
+    color: var(--qa-fg);
+    font-family: var(--qa-font-display);
     font-size: 1rem;
   }
 
-  .qa-table-wrapper {
-    overflow-x: auto;
+  .qa-feature-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
 
-  table.qa-feature-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.92rem;
+  .qa-feature-list li + li {
+    border-top: 1px solid var(--qa-border);
   }
 
-  table.qa-feature-table th,
-  table.qa-feature-table td {
-    text-align: left;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--qa-border);
+  .qa-feature-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 16px 18px;
+    margin: 0 -18px;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 8px;
+    transition: background-color 0.12s ease;
+  }
+
+  .qa-feature-row:hover {
+    background: var(--qa-bg);
+  }
+
+  .qa-feature-row__main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .qa-feature-row__name {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .qa-feature-row__tags {
+    margin: 3px 0 0;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .qa-feature-row__count {
+    color: var(--qa-fg-muted);
+    font-size: 0.85rem;
     white-space: nowrap;
   }
 
-  table.qa-feature-table th {
-    color: var(--qa-fg-muted);
+  .qa-feature-row__percent {
+    font-family: var(--qa-font-display);
+    font-size: 1.4rem;
     font-weight: 600;
+    min-width: 3.2ch;
+    text-align: right;
+  }
+
+  .qa-feature-row__chevron {
+    color: var(--qa-fg-muted);
+    font-size: 1.1rem;
   }
 
   .qa-badge {
     display: inline-block;
     padding: 3px 10px;
     border-radius: 999px;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.04em;
     border: 1px solid transparent;
+    white-space: nowrap;
   }
 
   .qa-badge--pass {
@@ -347,8 +488,10 @@
   .qa-scenario {
     border: 1px solid var(--qa-border);
     border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 18px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    /* Ver `.qa-step::before`: numera los steps dentro de ESTE scenario. */
+    counter-reset: qa-step;
   }
 
   .qa-scenario-header {
@@ -356,7 +499,7 @@
     align-items: baseline;
     gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 10px;
+    margin-bottom: 14px;
   }
 
   .qa-scenario-header h3 {
@@ -365,17 +508,23 @@
   }
 
   .qa-tag {
+    display: inline-block;
     color: var(--qa-fg-muted);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
+    padding: 1px 8px;
+    border: 1px solid var(--qa-border);
+    border-radius: 999px;
   }
 
   .qa-step {
     border-top: 1px solid var(--qa-border);
-    padding: 12px 0;
+    padding: 14px 0;
+    counter-increment: qa-step;
   }
 
   .qa-step:first-of-type {
     border-top: none;
+    padding-top: 4px;
   }
 
   .qa-step-header {
@@ -383,6 +532,17 @@
     align-items: baseline;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  /* El número de step SÍ importa acá (a diferencia de un marcador 01/02/03
+     decorativo): los steps corren en orden real, y poder decir "falló el
+     step 3" es información real para quien lee el reporte. */
+  .qa-step-header::before {
+    content: counter(qa-step);
+    color: var(--qa-fg-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    min-width: 1.4em;
   }
 
   .qa-step-keyword {
@@ -396,13 +556,13 @@
   }
 
   .qa-step-notes {
-    margin: 8px 0 0;
+    margin: 8px 0 0 1.4em;
     color: var(--qa-fg-muted);
     font-size: 0.9rem;
   }
 
   .qa-defect {
-    margin: 10px 0 0;
+    margin: 10px 0 0 1.4em;
     padding: 10px 12px;
     border: 1px solid var(--qa-fail);
     background: var(--qa-fail-bg);
@@ -423,7 +583,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    margin-top: 10px;
+    margin: 10px 0 0 1.4em;
   }
 
   .qa-evidence-item {
@@ -461,5 +621,38 @@
   .qa-empty {
     color: var(--qa-fg-muted);
     font-style: italic;
+  }
+
+  /*
+   * El "riel" — una franja de color de resultado en el borde izquierdo de
+   * cada fila/tarjeta con un resultado propio (features en el dashboard,
+   * scenarios en el detalle). Es la firma visual del reporte (ver skill
+   * frontend-design): sin leer una palabra, el ojo lee la columna de
+   * colores de arriba a abajo y ya sabe dónde están los problemas — el
+   * mismo principio que un semáforo de inspección real.
+   *
+   * Declarado AL FINAL de la hoja de estilos a propósito: `.qa-card` y
+   * `.qa-scenario` fijan `border` con la forma corta (las 4 esquinas a la
+   * vez, incluyendo `border-left`) — si `.qa-rail` se declarara ANTES que
+   * esas reglas, con igual especificidad (una sola clase) el orden en la
+   * hoja decide, y `border: ...` de `.qa-card`/`.qa-scenario` pisaría
+   * silenciosamente el `border-left` de `.qa-rail` (pasó de verdad al
+   * armar este template — el mismo pitfall de especificidad que advierte
+   * la skill frontend-design). Poniendo `.qa-rail` al final, siempre gana.
+   */
+  .qa-rail {
+    border-left: 4px solid transparent;
+  }
+  .qa-rail--pass {
+    border-left-color: var(--qa-pass);
+  }
+  .qa-rail--fail {
+    border-left-color: var(--qa-fail);
+  }
+  .qa-rail--skip {
+    border-left-color: var(--qa-skip);
+  }
+  .qa-rail--pending {
+    border-left-color: var(--qa-pending);
   }
 </style>

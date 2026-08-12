@@ -6,12 +6,12 @@
   que se pasa como bloque en vez de como parámetro plano.
 
   Dos variantes, decididas por `project.branding.isBranded` (ver
-  `core/report/reportGenerator.ts`):
-  - Branded: franja de marca a todo el ancho (`primaryColor` de fondo, logo
-    si hay uno configurado) + una franja fina de acento debajo (el elemento
-    "firma" del branding, ver ARCHITECTURE.md).
-  - Sin marca (default, incluye sample-project/): el header neutro de
-    siempre, SIN NINGÚN cambio visual respecto a antes de esta feature.
+  `core/report/reportGenerator.ts`) — la diferencia entre ambas es SOLO el
+  fondo/logo/franja de color de marca. La etiqueta "eyebrow" (enmarca el
+  documento como un reporte de ejecución, no la app) y la tipografía del
+  título son la misma en las dos variantes: no son parte del branding, son
+  parte del rediseño base del reporte (aplican también a sample-project/,
+  sin branding configurado).
 --}}
 {{#if project.branding.isBranded}}
   <header class="qa-brandbar">
@@ -20,6 +20,7 @@
         <img class="qa-brand-logo" src="{{basePath}}{{project.branding.logoAssetPath}}" alt="{{project.projectName}}" />
       {{/if}}
       <div class="qa-brandbar__text">
+        <p class="qa-eyebrow qa-eyebrow--onbrand">Reporte de ejecución</p>
         <h1>{{heading}}</h1>
         <p class="qa-meta qa-meta--onbrand">{{> @partial-block}}</p>
       </div>
@@ -37,6 +38,7 @@
 {{else}}
   <header class="qa-topbar">
     <div>
+      <p class="qa-eyebrow">Reporte de ejecución</p>
       <h1>{{heading}}</h1>
       <p class="qa-meta">{{> @partial-block}}</p>
     </div>

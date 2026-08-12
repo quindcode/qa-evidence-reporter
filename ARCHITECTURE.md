@@ -1088,3 +1088,73 @@ ambos opcionales vía `qa-config.json` → `branding` (ver sección "Formato de
   archivo real, el reporte generado tiene el header de marca. `sample-project/`
   (el demo público del repo) queda sin tocar — sin `branding` en su config,
   se ve exactamente igual que antes.
+
+### Post-fase 6 — rediseño visual del reporte HTML (dashboard y detalle)
+
+El branding (arriba) resolvió colores/logo, pero el usuario reportó que el
+reporte seguía viéndose "feo": layout genérico de panel de admin (tabla
+HTML plana, donut flotando con espacio vacío alrededor, sin jerarquía).
+Rediseño real (no solo paleta), aplicando la skill `frontend-design`.
+
+- **Verificación con capturas reales, no a ciegas**: este entorno tiene
+  Chromium/Chrome instalados (`google-chrome --headless --screenshot=...
+  --window-size=W,H archivo.html`), aunque no haya una extensión de
+  navegador conectada a la sesión de Claude. Se generaron reportes de
+  prueba con datos mixtos (pass/fail/skip/pending, evidencia real, un
+  defecto) y se los capturó en claro/oscuro/ancho angosto para iterar el
+  diseño viendo el resultado real, no solo razonando sobre el CSS. Método
+  recomendado para cualquier ajuste visual futuro del reporte.
+- **Tipografía de dos familias** (`--qa-font-display`: pila serif del
+  sistema — `Iowan Old Style`/Palatino/Georgia — sin fuentes externas ni
+  embebidas, sigue siendo 100% offline; `--qa-font-body`: la sans de
+  siempre). La serif se usa SOLO para números protagonistas (el % del hero,
+  el % de cada feature) — le da al reporte un aire de "documento formal" en
+  vez de "panel de admin", sin tocar la legibilidad del resto del texto.
+- **El hero real**: el `%` de aprobación pasó a ser el elemento más grande
+  y protagonista del dashboard (texto serif de ~4rem), con una etiqueta
+  "eyebrow" (`REPORTE DE EJECUCIÓN`) que enmarca el documento. El donut
+  bajó de 220px a 168px (`renderDonutChart(summary, { size: 168, strokeWidth: 24 })`
+  en `reportGenerator.ts`) — pasa de ser el protagonista a un visual de
+  acompañamiento, ya que el número en texto cumple ese rol ahora.
+  `.qa-dashboard-grid` se renombró a `.qa-hero` (rompe el selector que
+  usaba el test de regresión de SVG responsivo de la fase anterior — se
+  actualizó el test, no hay otro impacto).
+- **El "riel" de resultado** (firma visual elegida, ver skill
+  frontend-design "spend your boldness in one place"): una franja de 4px
+  del color semántico correspondiente en el borde izquierdo de cada fila
+  de feature (dashboard) y cada card de scenario (detalle) — se lee de
+  arriba a abajo sin necesitar texto, como un semáforo de inspección real.
+  **Bug real encontrado y corregido durante esta fase**: `.qa-rail` se
+  había declarado ANTES de `.qa-card`/`.qa-scenario` en la hoja de
+  estilos; como esas clases fijan `border` con la forma corta (las 4
+  esquinas, incluyendo `border-left`) y la especificidad es igual (una
+  sola clase cada una), el orden en la hoja decidía y `.qa-card`/
+  `.qa-scenario` pisaban en silencio el color del riel — exactamente el
+  pitfall de especificidad que la skill frontend-design advierte
+  explícitamente. Se corrigió declarando `.qa-rail`/`.qa-rail--*` al
+  FINAL de la hoja de estilos (con el porqué documentado in-line), para
+  que siempre gane sin depender de con qué otra clase se combine.
+- **Lista de features sin `<table>`**: la tabla HTML plana (`table.qa-feature-table`,
+  eliminada) se reemplazó por `.qa-feature-list`/`.qa-feature-row` — cada
+  fila es un `<a>` completo (toda la fila es clickeable, no solo un link
+  "Ver detalle" al final), con el riel de resultado, tags, conteo de
+  steps, badge, el % en la tipografía serif, y un `→` como afordancia.
+- **Numeración real de steps** (CSS `counter-reset`/`counter-increment`
+  en `.qa-scenario`/`.qa-step`, sin helper de Handlebars nuevo): los
+  steps de un scenario corren en un orden real y secuencial — a
+  diferencia de un marcador `01/02/03` puramente decorativo (que la skill
+  frontend-design pide cuestionar), acá el número SÍ es información real
+  ("falló el step 3"), así que se agregó.
+- **Header con `.qa-eyebrow`** aplicado a AMBAS variantes (con y sin
+  marca) — a diferencia del branding (que sí es 100% condicional), este
+  rediseño de tipografía/estructura aplica también a `sample-project/` y a
+  cualquier proyecto sin `branding` configurado. El comentario de
+  `partials/header.hbs` que decía "sin marca, SIN NINGÚN cambio visual"
+  se actualizó para reflejar esto — la afirmación de "sin cambios" ahora
+  aplica solo al fondo/logo/franja de color, no al resto del header.
+- Verificado en claro, oscuro, con branding, sin branding (`sample-project/`
+  y `mi-proyecto-qa/` regenerados y capturados en ambos temas), y en un
+  viewport angosto (900px) para confirmar que el hero sigue envolviendo
+  bien. 165 tests en verde (1 actualizado por el rename de clase, ninguno
+  nuevo necesario — el rediseño es puramente de presentación sobre datos
+  ya cubiertos).

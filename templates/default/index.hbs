@@ -15,53 +15,55 @@
 
     <div class="qa-container">
       <section class="qa-card" aria-labelledby="qa-dashboard-heading">
-        <h2 id="qa-dashboard-heading">Resumen general</h2>
-        <div class="qa-dashboard-grid">
-          <div>
-            {{{dashboard.distributionDonutSvg}}}
-            {{> legend summary=summary}}
-          </div>
-          <div class="qa-progress-block">
-            <h3>Progreso de la sesión ({{summary.completionPercent}}% completado)</h3>
-            {{{dashboard.progressBarSvg}}}
-            <p class="qa-meta">
-              {{summary.total}} step{{pluralize summary.total}} en total ·
-              {{summary.pass}} aprobado{{pluralize summary.pass}} ·
-              {{summary.fail}} fallido{{pluralize summary.fail}} ·
-              {{summary.skip}} omitido{{pluralize summary.skip}} ·
-              {{summary.pending}} pendiente{{pluralize summary.pending}}
+        <h2 id="qa-dashboard-heading" class="visually-hidden">Resumen general</h2>
+        <div class="qa-hero">
+          <div class="qa-hero__stat">
+            <p class="qa-eyebrow">Resultado general</p>
+            <p class="qa-hero__number">{{summary.passRatePercent}}<span>%</span></p>
+            <p class="qa-hero__caption">
+              aprobado sobre {{summary.total}} step{{pluralize summary.total}} ejecutados
             </p>
+          </div>
+          <div class="qa-hero__chart">{{{dashboard.distributionDonutSvg}}}</div>
+          <div class="qa-hero__side">
+            {{> legend summary=summary}}
+            <div>
+              <div class="qa-progress-label">
+                <span>Progreso de la sesión</span>
+                <strong>{{summary.completionPercent}}%</strong>
+              </div>
+              {{{dashboard.progressBarSvg}}}
+            </div>
           </div>
         </div>
       </section>
 
       <section class="qa-card" aria-labelledby="qa-features-heading">
-        <h2 id="qa-features-heading">Features</h2>
+        <h2 id="qa-features-heading" class="qa-section-heading">Features</h2>
         {{#if features.length}}
-          <div class="qa-table-wrapper">
-            <table class="qa-feature-table">
-              <thead>
-                <tr>
-                  <th>Feature</th>
-                  <th>Resultado</th>
-                  <th>% de éxito</th>
-                  <th>Steps</th>
-                  <th>Detalle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{#each features}}
-                  <tr>
-                    <td>{{name}}</td>
-                    <td>{{> badge}}</td>
-                    <td>{{summary.passRatePercent}}%</td>
-                    <td>{{summary.pass}}/{{summary.total}}</td>
-                    <td><a href="{{@root.basePath}}{{detailPath}}">Ver detalle</a></td>
-                  </tr>
-                {{/each}}
-              </tbody>
-            </table>
-          </div>
+          <ul class="qa-feature-list">
+            {{#each features}}
+              <li>
+                <a
+                  class="qa-feature-row qa-rail qa-rail--{{result}}"
+                  href="{{@root.basePath}}{{detailPath}}"
+                >
+                  <div class="qa-feature-row__main">
+                    <p class="qa-feature-row__name">{{name}}</p>
+                    {{#if tags.length}}
+                      <p class="qa-feature-row__tags">
+                        {{#each tags}}<span class="qa-tag">#{{this}}</span>{{/each}}
+                      </p>
+                    {{/if}}
+                  </div>
+                  <span class="qa-feature-row__count">{{summary.pass}}/{{summary.total}} steps</span>
+                  {{> badge}}
+                  <span class="qa-feature-row__percent">{{summary.passRatePercent}}%</span>
+                  <span class="qa-feature-row__chevron" aria-hidden="true">→</span>
+                </a>
+              </li>
+            {{/each}}
+          </ul>
         {{else}}
           <p class="qa-empty">No hay features seleccionadas en esta sesión.</p>
         {{/if}}

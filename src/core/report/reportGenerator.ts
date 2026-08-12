@@ -393,7 +393,11 @@ async function buildReportData(
     },
     summary,
     dashboard: {
-      distributionDonutSvg: renderDonutChart(summary),
+      // Tamaño reducido respecto al default (220px): en el rediseño del
+      // dashboard el protagonista es el % en texto grande (`.qa-hero__number`,
+      // ver templates/default/index.hbs) — el donut queda como visual de
+      // acompañamiento, no como el elemento principal.
+      distributionDonutSvg: renderDonutChart(summary, { size: 168, strokeWidth: 24 }),
       progressBarSvg: renderProgressBar(summary.completionPercent),
     },
     features,

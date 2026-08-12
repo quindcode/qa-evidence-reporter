@@ -254,7 +254,7 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     await generator.generate(sessionState, outputDir);
 
     const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
-    expect(indexHtml).toMatch(/\.qa-dashboard-grid\s+svg\s*\{[^}]*max-width:\s*100%/);
+    expect(indexHtml).toMatch(/\.qa-hero\s+svg\s*\{[^}]*max-width:\s*100%/);
   });
 
   describe('branding', () => {
