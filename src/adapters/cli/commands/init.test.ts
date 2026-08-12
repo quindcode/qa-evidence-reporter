@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { QaError } from '../../../core/types/errors.js';
 import type { Logger } from '../../../core/types/logger.js';
+import { DEFAULT_BRANDING, DEFAULT_BRANDING_LOGO_PATH } from '../defaultBrandingPaths.js';
 import { runInit } from './init.js';
 
 /**
@@ -52,8 +53,19 @@ describe('runInit', () => {
         allowedFormats: ['png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'pdf'],
       },
       logging: { level: 'info' },
+      branding: {
+        logoPath: 'branding/logo.png',
+        ...DEFAULT_BRANDING,
+      },
       reportTemplate: null,
     });
+
+    // El logo estándar de Quind debe quedar copiado dentro del proyecto,
+    // no solo referenciado — "run"/"report" leen branding.logoPath relativo
+    // al proyecto, no a la instalación del paquete.
+    const copiedLogo = await readFile(join(cwd, 'branding', 'logo.png'));
+    const sourceLogo = await readFile(DEFAULT_BRANDING_LOGO_PATH);
+    expect(copiedLogo.equals(sourceLogo)).toBe(true);
 
     // El feature de ejemplo debe ser Gherkin real (no un placeholder roto),
     // para que "run" tenga algo válido para parsear inmediatamente.

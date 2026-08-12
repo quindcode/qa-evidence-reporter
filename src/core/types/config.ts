@@ -65,17 +65,21 @@ const hexColorField = () =>
     .default(null);
 
 /**
- * Branding opcional de un proyecto (logo + paleta), para que el reporte HTML
- * y el runner puedan mostrar la identidad visual de una empresa/cliente en
- * vez del tema neutro por defecto — ver `core/types/report.ts` (`BrandingInput`/
- * `BrandingMeta`) para cómo se resuelve, y ARCHITECTURE.md para el mapeo de
- * roles (`primaryColor` = header, `accentColor` = acento/links/botones,
- * `highlightColor` = detalle de marca, `ctaColor` = acción destacada puntual).
+ * Branding de un proyecto (logo + paleta), para que el reporte HTML y el
+ * runner muestren la identidad visual de Quind en vez del tema neutro por
+ * defecto — ver `core/types/report.ts` (`BrandingInput`/`BrandingMeta`) para
+ * cómo se resuelve, y ARCHITECTURE.md para el mapeo de roles (`primaryColor`
+ * = header, `accentColor` = acento/links/botones, `highlightColor` =
+ * detalle de marca, `ctaColor` = acción destacada puntual).
  *
- * Todos los campos son opcionales/nulleables y el default de todo el bloque
- * es "nada configurado" — un proyecto sin `branding` en su `qa-config.json`
- * (el caso de `sample-project/` y de cualquier proyecto nuevo creado con
- * `init`) se ve exactamente igual que antes de que existiera esta feature.
+ * Todos los campos son opcionales/nulleables a NIVEL DE ESQUEMA (el default
+ * de este bloque, si está ausente, sigue siendo "nada configurado" — para
+ * quien construya un `qa-config.json` a mano por fuera de `init`, o edite
+ * uno existente para desactivarlo). Post-fase 6: `adapters/cli/commands/
+ * init.ts` deja de confiar en ese default y escribe SIEMPRE el estándar de
+ * Quind (`defaultBrandingPaths.ts`) — todo proyecto creado con `init`
+ * (incluido `sample-project/`, actualizado en el mismo cambio) tiene
+ * branding desde el primer momento, sin configuración manual.
  */
 const BrandingConfigSchema = z.object({
   /** Ruta al archivo de logo, relativa a la raíz del proyecto (mismo criterio que `featuresDir`/`evidenceDir`), o `null` si no hay logo. */

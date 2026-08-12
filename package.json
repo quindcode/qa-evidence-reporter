@@ -16,7 +16,8 @@
   },
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "branding"
   ],
   "engines": {
     "node": ">=18"

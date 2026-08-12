@@ -65,6 +65,10 @@ Crea, en el directorio actual:
 
 - `features/` (con un `.feature` de ejemplo, comentado y editable/borrable)
 - `evidence/` y `reports/` (vacíos)
+- `branding/logo.png` + el bloque `branding` en `qa-config.json`, con el
+  logo y la paleta estándar de Quind ya configurados — todo proyecto nuevo
+  se ve igual desde el primer momento, sin que haya que configurar nada
+  (ver `branding` más abajo si necesitás editarlo o desactivarlo).
 - `qa-config.json` (ver formato completo más abajo)
 
 ```bash
@@ -331,7 +335,18 @@ y se puede arrastrar y soltar (drag & drop) uno o más archivos sobre esa misma
 ```
 
 Todos los campos son opcionales (una config parcial se completa con estos
-defaults); `qa-evidence-reporter init` escribe siempre el archivo completo.
+defaults) — el bloque de arriba muestra el default a nivel de esquema, con
+`branding` en `null` (sin branding).
+
+**`qa-evidence-reporter init` no usa ese default para `branding`**: escribe
+siempre el logo y los 4 colores estándar de Quind (`primaryColor`
+`"#1e3543"`, `accentColor` `"#00c4e9"`, `highlightColor` `"#ffb91c"`,
+`ctaColor` `"#ff5530"`, con `logoPath: "branding/logo.png"`), y copia el
+archivo del logo dentro del proyecto — todo proyecto QA nuevo se ve igual
+desde el primer momento, sin configuración manual. El bloque `branding` con
+todo en `null` de arriba sigue siendo válido si armás un `qa-config.json` a
+mano (sin `init`) o si editás el que generó `init` para sacarle el
+branding.
 
 | Campo                     | Tipo                                     | Descripción                                                                                          |
 | ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -345,7 +360,7 @@ defaults); `qa-evidence-reporter init` escribe siempre el archivo completo.
 | `evidence.maxFileSizeMB`  | `number`                                 | Tamaño máximo por archivo de evidencia; archivos más grandes se rechazan (`413`).                    |
 | `evidence.allowedFormats` | `string[]`                               | Extensiones permitidas (sin el punto); cualquier otra se rechaza (`415`).                            |
 | `logging.level`           | `"debug" \| "info" \| "warn" \| "error"` | Nivel de log interno (diagnóstico, no la salida de usuario de los comandos).                         |
-| `branding.logoPath`       | `string \| null`                         | Ruta al logo de tu empresa/cliente (relativa al proyecto), o `null` para no mostrar ninguno.         |
+| `branding.logoPath`       | `string \| null`                         | Ruta al logo (relativa al proyecto). `init` la deja en `"branding/logo.png"`; `null` = no mostrar ninguno. |
 | `branding.primaryColor`   | `string \| null`                         | Color del header del reporte/runner (hex, ej. `"#1e3543"`). `null` = header neutro de siempre.       |
 | `branding.accentColor`    | `string \| null`                         | Color de acento: links, botones, foco. `null` = acento neutro de siempre.                            |
 | `branding.highlightColor` | `string \| null`                         | Color de detalle de marca (franja distintiva bajo el header).                                        |

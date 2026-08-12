@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 
 import {
@@ -8,7 +8,11 @@ import {
 import { QaError } from '../../../core/types/errors.js';
 import type { Logger } from '../../../core/types/logger.js';
 import { createLogger } from '../../../core/logger/index.js';
+import { DEFAULT_BRANDING, DEFAULT_BRANDING_LOGO_PATH } from '../defaultBrandingPaths.js';
 import { pathExists } from '../fsUtils.js';
+
+/** Ruta (relativa al proyecto QA) donde `init` copia el logo estándar. */
+const BRANDING_LOGO_RELATIVE_PATH = 'branding/logo.png';
 
 const CONFIG_FILE_NAME = 'qa-config.json';
 
@@ -113,6 +117,10 @@ export async function runInit(
   await writeFile(join(evidenceDir, '.gitkeep'), '', 'utf-8');
   await writeFile(join(reportsDir, '.gitkeep'), '', 'utf-8');
 
+  const brandingDir = join(cwd, 'branding');
+  await mkdir(brandingDir, { recursive: true });
+  await copyFile(DEFAULT_BRANDING_LOGO_PATH, join(cwd, BRANDING_LOGO_RELATIVE_PATH));
+
   await writeFile(configFilePath, buildConfigFileContents(projectName), 'utf-8');
   logger.info('qa-config.json creado', { configFilePath, projectName });
 
@@ -129,6 +137,15 @@ export async function runInit(
  * NO es parte de `QaConfigSchema` (se descarta al parsear, ver
  * `core/types/config.ts`) — si se generara desde el resultado de un parse,
  * este campo se perdería.
+ *
+ * Decisión post-fase 6: `branding` se escribe SIEMPRE con el estándar de
+ * Quind (`DEFAULT_BRANDING`, `defaultBrandingPaths.ts`), no `null` — todo
+ * proyecto nuevo debe verse igual, sin que quien corre `init` tenga que
+ * configurar nada a mano. El esquema (`core/types/config.ts`) sigue
+ * aceptando `branding: null`/ausente para quien construya un
+ * `qa-config.json` a mano por fuera de `init` (o quiera desactivarlo
+ * editando el archivo después) — el default a nivel de librería no cambió,
+ * solo lo que este comando de CLI decide escribir.
  */
 function buildConfigFileContents(projectName: string): string {
   const config = {
@@ -144,6 +161,10 @@ function buildConfigFileContents(projectName: string): string {
       allowedFormats: [...DEFAULT_ALLOWED_EVIDENCE_FORMATS],
     },
     logging: { level: 'info' },
+    branding: {
+      logoPath: BRANDING_LOGO_RELATIVE_PATH,
+      ...DEFAULT_BRANDING,
+    },
     reportTemplate: null,
   };
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -159,7 +180,8 @@ function printNextSteps(
   print('');
   print('Próximos pasos:');
   print(
-    `  1. Revisá "${relativeConfigPath}" (nombre del equipo, puertos, formatos de evidencia permitidos, etc.).`,
+    `  1. Revisá "${relativeConfigPath}" (nombre del equipo, puertos, formatos de evidencia permitidos, etc.). ` +
+      'El branding (logo + colores estándar de Quind) ya viene configurado — no hace falta tocarlo.',
   );
   print('  2. Agregá tus archivos .feature en "features/" (o editá/borrá el ejemplo incluido).');
   print(

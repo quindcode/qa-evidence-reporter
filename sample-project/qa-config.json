@@ -11,5 +11,12 @@
     "allowedFormats": ["png", "jpg", "jpeg", "gif", "mp4", "webm", "pdf"]
   },
   "logging": { "level": "info" },
+  "branding": {
+    "logoPath": "branding/logo.png",
+    "primaryColor": "#1e3543",
+    "accentColor": "#00c4e9",
+    "highlightColor": "#ffb91c",
+    "ctaColor": "#ff5530"
+  },
   "reportTemplate": null
 }

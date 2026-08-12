@@ -1453,3 +1453,70 @@ automático de puerto (entrada de más arriba, confirmado funcionando por
 este mismo usuario) NO se tocó — son dos features independientes que
 llegaron en el mismo pedido, y solo la de los lanzadores resultó
 irreproducible/fallida en uso real.
+
+### Post-fase 6 — cambio de política: el branding de Quind pasa a ser el default de TODO proyecto nuevo (revierte una decisión previa)
+
+Pedido explícito del usuario: quiere que todos los proyectos de QA se vean
+iguales, y que el branding sea un insumo mínimo (no algo opcional que cada
+quien configure a mano) — es decir, deja de ser "branding por cliente,
+opt-in" (el diseño original, ver la entrada de branding más arriba en este
+documento) y pasa a ser "identidad fija de Quind, por defecto, en todo lo
+que genere esta herramienta".
+
+**Esto revierte, a propósito, una decisión previa documentada con su propia
+razón**: el `.gitignore` original excluía `/branding/` explícitamente
+porque "este repo es la herramienta genérica, no debe llevar el branding de
+ningún cliente/empresa en particular (y menos en un repo público)" (ver
+commit `51fb773`). Antes de implementar este cambio se confirmó
+explícitamente con el usuario que **este repo/paquete es de uso exclusivo
+interno de Quind** (no se distribuye ni se instala fuera de Quind) — con
+esa confirmación, la razón original para no grabar una marca fija en el
+código fuente deja de aplicar, y grabar el estándar de Quind como default
+del propio código pasa a ser correcto en vez de un error de diseño. Si esa
+premisa cambiara en el futuro (el paquete pasa a distribuirse fuera de
+Quind), esta decisión debe revisarse desde cero — no alcanza con volver a
+hacer `branding` opcional a nivel de esquema (eso ya lo es, ver siguiente
+punto).
+
+**Implementación**:
+- `branding/logo.png` (raíz del repo, antes solo un archivo de staging
+  local ignorado por git) ahora SÍ se versiona, y se agrega `"branding"` a
+  `"files"` de `package.json` para que se publique junto con `dist/` y
+  `templates/`.
+- `src/adapters/cli/defaultBrandingPaths.ts` (nuevo): `DEFAULT_BRANDING`
+  (los 4 colores hex ya usados en el proyecto real del usuario,
+  `mi-proyecto-qa/` — primaryColor `#1e3543`, accentColor `#00c4e9`,
+  highlightColor `#ffb91c`, ctaColor `#ff5530`) y
+  `DEFAULT_BRANDING_LOGO_PATH`, resuelto con la misma técnica que
+  `DEFAULT_TEMPLATE_DIR` (`templatePaths.ts`: `import.meta.url` + 3 niveles
+  hacia arriba, nunca `process.cwd()` — mismo razonamiento, mismo archivo
+  publicado junto a `dist/`).
+- `adapters/cli/commands/init.ts` (`runInit`): copia ese logo a
+  `<proyecto>/branding/logo.png` y escribe el bloque `branding` completo en
+  `qa-config.json` (antes, `init` no escribía la clave `branding` en
+  absoluto). **El esquema (`core/types/config.ts`, `BrandingConfigSchema`)
+  NO cambió** — sigue aceptando `branding` ausente/`null` como válido, con
+  el mismo default neutro de siempre. Lo que cambió es una decisión de este
+  comando de CLI puntual, no del core: alguien que arme un `qa-config.json`
+  a mano (sin pasar por `init`) o que edite uno generado para sacar el
+  branding sigue pudiendo hacerlo sin ningún error de validación.
+- `sample-project/` (retrofit explícitamente pedido por el usuario, no
+  automático): gana `sample-project/branding/logo.png` (copia del logo
+  estándar) y el mismo bloque `branding` en su `qa-config.json`. Esto
+  **contradice el comentario original** de la entrada de branding más
+  arriba en este documento ("`sample-project/` ... queda sin tocar ... se
+  ve exactamente igual que antes") — se deja esa entrada vieja intacta (era
+  correcta en el momento en que se escribió) y se documenta el cambio acá,
+  siguiendo el mismo criterio de todo este archivo: no reescribir el
+  historial, agregar la entrada nueva que lo supera.
+- `~/mi-proyecto-qa` (el proyecto duplicado sin branding, ver la entrada de
+  arriba sobre el bug de doble clic) **NO se tocó** — el usuario, al elegir
+  el alcance de este retrofit, pidió explícitamente solo `sample-project/`.
+- Verificado de punta a punta contra un server real (copia de
+  `sample-project/` en un directorio temporal, sin tocar el repo):
+  `GET /api/features` devuelve la paleta real (`primaryColor`/`accentColor`/
+  `highlightColor`/`ctaColor` + `logoUrl: "/branding/logo"`), `GET
+  /branding/logo` responde `200` con el PNG real (1920×1081). Test nuevo en
+  `init.test.ts` (el `qa-config.json` generado incluye `branding` con los 4
+  colores y `logoPath`, y el archivo copiado es byte a byte idéntico al
+  logo fuente del paquete).
