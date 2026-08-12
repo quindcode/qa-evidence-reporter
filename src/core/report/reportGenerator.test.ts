@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +14,7 @@ import type { ParsedFeature } from '../types/parser.js';
 import type { EvidenceFile } from '../types/evidence.js';
 import type { SessionState } from '../types/session.js';
 import { createHandlebarsTemplateEngine } from './templateEngine.js';
-import { createReportGenerator } from './reportGenerator.js';
+import { createReportGenerator, pickReadableTextColor } from './reportGenerator.js';
 
 /** Carpeta real de templates del paquete (`templates/default`), usada tal cual la usaría el CLI en fases futuras. */
 const DEFAULT_TEMPLATE_DIR = fileURLToPath(new URL('../../../templates/default', import.meta.url));
@@ -255,6 +255,134 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
 
     const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
     expect(indexHtml).toMatch(/\.qa-dashboard-grid\s+svg\s*\{[^}]*max-width:\s*100%/);
+  });
+
+  describe('branding', () => {
+    it('sin branding configurado, el header es el neutro de siempre (sin .qa-brandbar)', async () => {
+      const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+      const generator = createReportGenerator(
+        { projectName: 'Proyecto Demo', evidenceBaseDir },
+        templateEngine,
+        { clock: () => FIXED_GENERATED_AT },
+      );
+      await generator.generate(sessionState, outputDir);
+
+      const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+      expect(indexHtml).toContain('class="qa-topbar"');
+      expect(indexHtml).not.toContain('qa-brandbar');
+      expect(existsSync(join(outputDir, 'assets', 'branding'))).toBe(false);
+    });
+
+    it('con logo + colores configurados, copia el logo y renderiza el header de marca en index y en feature-detail', async () => {
+      const logoPath = join(workDir, 'logo.png');
+      await writeFile(logoPath, await makePngBuffer());
+
+      const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+      const generator = createReportGenerator(
+        {
+          projectName: 'Proyecto Demo',
+          evidenceBaseDir,
+          branding: {
+            logoAbsolutePath: logoPath,
+            primaryColor: '#1e3543',
+            accentColor: '#00c4e9',
+            highlightColor: '#ffb91c',
+            ctaColor: '#ff5530',
+          },
+        },
+        templateEngine,
+        { clock: () => FIXED_GENERATED_AT },
+      );
+      await generator.generate(sessionState, outputDir);
+
+      expect(existsSync(join(outputDir, 'assets', 'branding', 'logo.png'))).toBe(true);
+
+      const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+      expect(indexHtml).toContain('class="qa-brandbar"');
+      expect(indexHtml).not.toContain('class="qa-topbar"');
+      expect(indexHtml).toContain('src="assets/branding/logo.png"');
+      expect(indexHtml).toContain('background: #1e3543;');
+      // Navy es oscuro → el texto legible sobre esa franja es blanco (ver `pickReadableTextColor`).
+      expect(indexHtml).toContain('color: #ffffff;');
+      expect(indexHtml).toContain('--qa-link: #00c4e9 !important;');
+      expect(indexHtml).toMatch(/linear-gradient\(\s*90deg,\s*#00c4e9,\s*#ffb91c,\s*#ff5530/);
+
+      const featureHtml = await readFile(
+        join(outputDir, 'features', 'f0-login.html'),
+        'utf-8',
+      );
+      expect(featureHtml).toContain('class="qa-brandbar"');
+      // Un nivel más abajo (`basePath = '../'`): el logo se referencia con ese prefijo.
+      expect(featureHtml).toContain('src="../assets/branding/logo.png"');
+    });
+
+    it('con un logoPath configurado que no existe en disco, no falla generate() — sigue sin logo (best-effort)', async () => {
+      const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+      const generator = createReportGenerator(
+        {
+          projectName: 'Proyecto Demo',
+          evidenceBaseDir,
+          branding: {
+            logoAbsolutePath: join(workDir, 'no-existe.png'),
+            primaryColor: '#1e3543',
+          },
+        },
+        templateEngine,
+        { clock: () => FIXED_GENERATED_AT },
+      );
+
+      await expect(generator.generate(sessionState, outputDir)).resolves.toBeUndefined();
+
+      const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+      expect(indexHtml).toContain('class="qa-brandbar"'); // isBranded=true igual (primaryColor sí está configurado)
+      expect(indexHtml).not.toContain('<img class="qa-brand-logo"');
+    });
+
+    it('nunca toca los colores semánticos de resultado (pass/fail/skip/pending) aunque haya branding configurado', async () => {
+      const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+      const generator = createReportGenerator(
+        {
+          projectName: 'Proyecto Demo',
+          evidenceBaseDir,
+          branding: {
+            primaryColor: '#1e3543',
+            accentColor: '#00c4e9',
+            highlightColor: '#ffb91c',
+            ctaColor: '#ff5530',
+          },
+        },
+        templateEngine,
+        { clock: () => FIXED_GENERATED_AT },
+      );
+      await generator.generate(sessionState, outputDir);
+
+      const featureHtml = await readFile(
+        join(outputDir, 'features', 'f1-checkout.html'),
+        'utf-8',
+      );
+      // El defecto sigue resaltado en rojo semántico (`--qa-fail`), NUNCA con un color de marca.
+      expect(featureHtml).toContain('color: var(--qa-fail);');
+      expect(featureHtml).not.toContain('color: #ff5530');
+    });
+  });
+
+  describe('pickReadableTextColor', () => {
+    it('elige blanco sobre un fondo oscuro (navy de marca)', () => {
+      expect(pickReadableTextColor('#1e3543')).toBe('#ffffff');
+    });
+
+    it('elige texto oscuro sobre un fondo claro/vívido (cian de marca) donde blanco no tendría contraste suficiente', () => {
+      expect(pickReadableTextColor('#00c4e9')).toBe('#111111');
+    });
+
+    it('acepta hex de 3 dígitos', () => {
+      expect(pickReadableTextColor('#000')).toBe('#ffffff');
+      expect(pickReadableTextColor('#fff')).toBe('#111111');
+    });
+
+    it('devuelve texto oscuro (opción defensiva) si el color no es un hex válido', () => {
+      expect(pickReadableTextColor('no-es-un-color')).toBe('#111111');
+    });
   });
 
   it('copia el ícono genérico de video y otros assets estáticos del template a outputDir/assets/', async () => {

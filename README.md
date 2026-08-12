@@ -304,6 +304,13 @@ y se puede arrastrar y soltar (drag & drop) uno o más archivos sobre esa misma
     "allowedFormats": ["png", "jpg", "jpeg", "gif", "mp4", "webm", "pdf"]
   },
   "logging": { "level": "info" },
+  "branding": {
+    "logoPath": null,
+    "primaryColor": null,
+    "accentColor": null,
+    "highlightColor": null,
+    "ctaColor": null
+  },
   "reportTemplate": null
 }
 ```
@@ -323,7 +330,16 @@ defaults); `qa-evidence-reporter init` escribe siempre el archivo completo.
 | `evidence.maxFileSizeMB`  | `number`                                 | Tamaño máximo por archivo de evidencia; archivos más grandes se rechazan (`413`).                    |
 | `evidence.allowedFormats` | `string[]`                               | Extensiones permitidas (sin el punto); cualquier otra se rechaza (`415`).                            |
 | `logging.level`           | `"debug" \| "info" \| "warn" \| "error"` | Nivel de log interno (diagnóstico, no la salida de usuario de los comandos).                         |
+| `branding.logoPath`       | `string \| null`                         | Ruta al logo de tu empresa/cliente (relativa al proyecto), o `null` para no mostrar ninguno.         |
+| `branding.primaryColor`   | `string \| null`                         | Color del header del reporte/runner (hex, ej. `"#1e3543"`). `null` = header neutro de siempre.       |
+| `branding.accentColor`    | `string \| null`                         | Color de acento: links, botones, foco. `null` = acento neutro de siempre.                            |
+| `branding.highlightColor` | `string \| null`                         | Color de detalle de marca (franja distintiva bajo el header).                                        |
+| `branding.ctaColor`       | `string \| null`                         | Color de una acción destacada puntual (ej. "Exportar como ZIP").                                     |
 | `reportTemplate`          | `string \| null`                         | Ruta a un template Handlebars custom, o `null` para usar el template embebido (`templates/default`). |
+
+Los colores semánticos de resultado (verde=Pass, rojo=Fail, gris=Skip,
+ámbar=Pending) **nunca** se ven afectados por `branding` — siguen siendo
+fijos, para no perder la lectura instantánea del estado de cada step.
 
 ## Proyecto de ejemplo (opcional)
 

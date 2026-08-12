@@ -1,0 +1,52 @@
+{{!--
+  Header compartido entre index.hbs y feature-detail.hbs. Recibe `heading`
+  (texto del <h1>) y usa el contenido del bloque (`{{#> header}}...{{/header}}`)
+  como el párrafo de metadata bajo el título — cada página arma ese texto
+  distinto (index: fecha + ejecutor; feature-detail: proyecto + tags), así
+  que se pasa como bloque en vez de como parámetro plano.
+
+  Dos variantes, decididas por `project.branding.isBranded` (ver
+  `core/report/reportGenerator.ts`):
+  - Branded: franja de marca a todo el ancho (`primaryColor` de fondo, logo
+    si hay uno configurado) + una franja fina de acento debajo (el elemento
+    "firma" del branding, ver ARCHITECTURE.md).
+  - Sin marca (default, incluye sample-project/): el header neutro de
+    siempre, SIN NINGÚN cambio visual respecto a antes de esta feature.
+--}}
+{{#if project.branding.isBranded}}
+  <header class="qa-brandbar">
+    <div class="qa-brandbar__inner">
+      {{#if project.branding.logoAssetPath}}
+        <img class="qa-brand-logo" src="{{basePath}}{{project.branding.logoAssetPath}}" alt="{{project.projectName}}" />
+      {{/if}}
+      <div class="qa-brandbar__text">
+        <h1>{{heading}}</h1>
+        <p class="qa-meta qa-meta--onbrand">{{> @partial-block}}</p>
+      </div>
+      <button
+        id="qa-theme-toggle"
+        class="qa-theme-toggle qa-theme-toggle--onbrand"
+        type="button"
+        aria-label="Cambiar entre tema claro y oscuro"
+      >
+        🌓 Tema
+      </button>
+    </div>
+    <div class="qa-brand-stripe"></div>
+  </header>
+{{else}}
+  <header class="qa-topbar">
+    <div>
+      <h1>{{heading}}</h1>
+      <p class="qa-meta">{{> @partial-block}}</p>
+    </div>
+    <button
+      id="qa-theme-toggle"
+      class="qa-theme-toggle"
+      type="button"
+      aria-label="Cambiar entre tema claro y oscuro"
+    >
+      🌓 Tema
+    </button>
+  </header>
+{{/if}}

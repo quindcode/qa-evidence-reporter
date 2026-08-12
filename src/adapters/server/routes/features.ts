@@ -45,6 +45,19 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
         session: session
           ? { exists: true, status: session.status, projectName: session.projectName }
           : { exists: false },
+        projectName: context.config.projectName,
+        branding: {
+          // `logoUrl` es la ruta servida por `createBrandingRouter`
+          // (`/branding/logo`, ver `routes/branding.ts`), NUNCA una ruta de
+          // filesystem — `null` si no hay logo configurado, para que la UI
+          // sepa de antemano si debe pedirlo (y no dispare un 404 esperable
+          // al vuelo con cada carga).
+          logoUrl: context.brandingLogoAbsolutePath ? '/branding/logo' : null,
+          primaryColor: context.config.branding.primaryColor,
+          accentColor: context.config.branding.accentColor,
+          highlightColor: context.config.branding.highlightColor,
+          ctaColor: context.config.branding.ctaColor,
+        },
       });
     }),
   );

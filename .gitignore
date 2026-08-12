@@ -13,3 +13,9 @@ sample-project/reports/
 # Config local de Claude Code (permisos de este usuario/sesión, no es parte
 # del proyecto compartido).
 .claude/settings.local.json
+
+# Logo real de la empresa, dejado acá solo como staging para copiarlo al
+# proyecto QA real (fuera de este repo) — este repo es la herramienta
+# genérica, no debe llevar el branding de ningún cliente/empresa en
+# particular (y menos en un repo público).
+/branding/

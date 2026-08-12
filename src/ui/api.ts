@@ -1,4 +1,5 @@
 import type {
+  Branding,
   CurrentStepInfo,
   EvidenceFile,
   FeatureSummary,
@@ -70,6 +71,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface FeaturesResponse {
   features: FeatureSummary[];
   session: SessionSummary;
+  projectName: string;
+  branding: Branding;
 }
 
 export interface SessionResponse {

@@ -105,9 +105,17 @@ Definir (mínimo, ampliar según se necesite, pero no romper estos nombres):
   "server": { "port": 3000, "openBrowser": true },
   "evidence": { "maxFileSizeMB": 50, "allowedFormats": ["png", "jpg", "jpeg", "gif", "mp4", "webm", "pdf"] },
   "logging": { "level": "info" },
+  "branding": { "logoPath": null, "primaryColor": null, "accentColor": null, "highlightColor": null, "ctaColor": null },
   "reportTemplate": null
 }
 ```
+
+`branding` (agregado post-fase 6, ver "Cambios registrados" al final): opcional,
+para que el reporte HTML y el runner muestren el logo/paleta de una
+empresa/cliente en vez del tema neutro por defecto. `logoPath` es relativo a
+la raíz del proyecto (mismo criterio que `featuresDir`); los 4 colores son
+hex (`#rgb`/`#rrggbb`), validados por `core/config`. Todo `null` (el default)
+= sin cambios visuales respecto a como era antes de esta feature.
 
 ## Formato de `session.json` (persistencia)
 
@@ -1003,3 +1011,80 @@ Corrección:
 - Verificado además manualmente contra el binario compilado real
   (`dist/`), reproduciendo el flujo exacto reportado (subir evidencia,
   borrarla, listar de nuevo) vía `curl` sobre un server real.
+
+### Post-fase 6 — feature: branding opcional (logo + paleta) en reporte y runner
+
+Pedido real de un usuario para poder compartir el reporte con clientes con
+identidad visual propia. Alcance: reporte HTML (fase 3) Y runner (fase 5b),
+ambos opcionales vía `qa-config.json` → `branding` (ver sección "Formato de
+`qa-config.json`" arriba).
+
+- **Decisión de diseño (colores semánticos de resultado INTOCABLES)**:
+  pass/fail/skip/pending siguen siendo verde/rojo/gris/ámbar fijos
+  (`RESULT_COLORS`, `core/report/charts.ts` / `src/ui/colors.ts`) — el
+  branding se aplica solo al "empaque" (header, acentos, botones), nunca al
+  semáforo de resultados. Verificado con un test dedicado
+  (`reportGenerator.test.ts`: "nunca toca los colores semánticos...").
+- **`core/types/config.ts`**: nuevo `BrandingConfigSchema` (`logoPath` +
+  4 colores hex, todos opcionales/nulleables, default = nada configurado),
+  con validación de formato hex vía regex (`ConfigValidationError` si un
+  color no es `#rgb`/`#rrggbb`).
+- **`core/types/report.ts`**: `BrandingInput` (lo que recibe
+  `createReportGenerator` desde el caller, con `logoAbsolutePath` ya
+  resuelto) vs. `BrandingMeta` (ya resuelto para el template: logo copiado,
+  colores de contraste calculados, `isBranded` explícito). `ProjectMeta`
+  gana un campo `branding: BrandingMeta` obligatorio.
+- **`core/report/reportGenerator.ts`**: `pickReadableTextColor(hex)`
+  (exportada, con tests propios) elige `#ffffff`/`#111111` por contraste
+  WCAG real (no asume que un fondo oscuro de marca siempre quiere texto
+  blanco — un acento CLARO como el cian de este pedido real necesita texto
+  oscuro para pasar WCAG AA, ver los tests). El logo se copia (best-effort,
+  nunca hace fallar `generate()` si el archivo no existe — mismo criterio
+  que `tryGenerateThumbnail`) a `outputDir/assets/branding/logo{ext}`.
+- **Templates** (`templates/default/`): nuevo partial `header.hbs`
+  (block partial, `{{#> header heading=...}}...{{/header}}`) con DOS
+  variantes según `project.branding.isBranded`: la neutra de siempre
+  (`.qa-topbar`, sin cambios) o una franja de marca a todo el ancho
+  (`.qa-brandbar`, con logo) + una franja fina de 3 colores como "firma"
+  visual (ver skill `frontend-design`). El CSS de marca vive TODO dentro de
+  `{{#if project.branding.isBranded}}` en `styles.hbs` — sin branding
+  configurado, no se emite ni una línea de ese bloque (el reporte de
+  `sample-project/` queda byte-a-byte equivalente a antes; verificado
+  regenerándolo y confirmando 0 ocurrencias de `qa-brandbar`).
+- **`--qa-link` con `!important`** (único caso en toda la hoja de estilos):
+  el acento de marca debe ganarle a los 4 selectors de tema que ya fijan esa
+  variable (`:root` claro/oscuro + `[data-theme]` + `prefers-color-scheme`);
+  igualar/superar esa especificidad a mano sería frágil ante el próximo
+  cambio de tema — `!important` expresa directamente la regla real ("el
+  acento de marca configurado siempre gana"). Documentado in-line con la
+  razón exacta.
+- **Server**: `ServerContext` gana `brandingLogoAbsolutePath` (resuelto
+  igual que `featuresDir`/`evidenceBaseDir`/etc., duplicado en
+  `adapters/cli/commands/run.ts` por la regla de dependencia cli↔server).
+  Nuevo router `routes/branding.ts`: `GET /branding/logo` (fuera de `/api`,
+  mismo criterio que los prefijos estáticos de evidencia/reportes — sirve un
+  archivo, no JSON) con `res.sendFile`, 404 `NO_BRANDING_LOGO` si no hay
+  logo o el archivo no existe. `GET /api/features` gana `projectName` (antes
+  solo vivía dentro de `session`, no servía si todavía no había sesión) y
+  `branding` (colores + `logoUrl` ya armado como `/branding/logo` o `null`).
+- **`src/ui/`**: `colors.ts` gana su propia copia de `pickReadableTextColor`
+  (mismo criterio de duplicación deliberada que `RESULT_COLORS`). `App.tsx`
+  aplica la paleta con `document.documentElement.style.setProperty` sobre
+  variables CSS (`--accent`/`--accent-contrast` se REPUNTAN directamente —
+  es literalmente el rol de "acento principal" acordado con el usuario;
+  `--brand-primary`/`--brand-cta` son variables nuevas con default neutro en
+  `styles.css`) — un estilo inline gana sobre cualquier regla de hoja de
+  estilo en cualquier tema sin necesitar `!important` (a diferencia del
+  reporte HTML estático, que sí lo necesita por ser una hoja de estilos, no
+  JS). Header con logo condicional + franja de firma (mismo elemento visual
+  que el reporte). Botón "Exportar como ZIP" usa la nueva clase
+  `.button--cta` (`--brand-cta`, default = `--accent` si no hay `ctaColor`
+  configurado).
+- Aplicado al proyecto real del usuario (`mi-proyecto-qa/`, fuera de este
+  repo): logo copiado a `mi-proyecto-qa/branding/logo.png`,
+  `qa-config.json` con los 4 colores reales. Verificado contra el server
+  real ya corriendo (reiniciado para tomar el nuevo build): `GET
+  /api/features` devuelve la paleta real, `GET /branding/logo` sirve el
+  archivo real, el reporte generado tiene el header de marca. `sample-project/`
+  (el demo público del repo) queda sin tocar — sin `branding` en su config,
+  se ve exactamente igual que antes.

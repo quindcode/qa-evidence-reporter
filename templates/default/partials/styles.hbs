@@ -130,6 +130,92 @@
     filter: brightness(1.08);
   }
 
+  {{#if project.branding.isBranded}}
+    /* ============================================================
+       Branding opcional (logo + paleta de empresa/cliente) — todo este
+       bloque solo se emite cuando `project.branding.isBranded` es true (ver
+       `partials/header.hbs` y `core/report/reportGenerator.ts`). Sin
+       branding configurado (el caso por defecto, y el de sample-project/),
+       el `.qa-topbar` de siempre queda exactamente igual que antes de esta
+       feature — no se emite ni una línea de este bloque.
+
+       Nota: si se configura SOLO un subconjunto de los 4 colores (p. ej.
+       `primaryColor` sin `accentColor`), las declaraciones que dependen de
+       un color ausente quedan vacías (`background: ;`) y el navegador las
+       descarta silenciosamente — degrada con gracia (sin fondo/franja) en
+       vez de romper el resto del CSS, pero el resultado visual completo
+       asume que se configuran los 4 colores juntos. */
+
+    /* `!important` deliberado: `--qa-link` (usado por `a { color: ... }`,
+       única otra cosa "de acento" del reporte además del header/franja) ya
+       está seteado en 4 selectores distintos (`:root` claro/oscuro y sus
+       variantes `[data-theme]`/`prefers-color-scheme`, ver arriba en este
+       mismo archivo) para soportar el toggle de tema. Igualar o superar la
+       especificidad de los 4 a mano sería frágil ante el próximo cambio de
+       tema; `!important` en esta única declaración expresa directamente la
+       regla real: "si hay un acento de marca configurado, ese acento gana
+       siempre, sin importar el tema". */
+    :root {
+      --qa-link: {{project.branding.accentColor}} !important;
+    }
+
+    .qa-brandbar {
+      background: {{project.branding.primaryColor}};
+      color: {{project.branding.primaryContrast}};
+      margin-bottom: 24px;
+    }
+
+    .qa-brandbar__inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .qa-brand-logo {
+      height: 40px;
+      width: auto;
+      display: block;
+      flex-shrink: 0;
+    }
+
+    .qa-brandbar__text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .qa-brandbar__text h1 {
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    .qa-meta--onbrand {
+      color: {{project.branding.primaryContrast}};
+      opacity: 0.8;
+    }
+
+    .qa-theme-toggle--onbrand {
+      border-color: color-mix(in srgb, {{project.branding.primaryContrast}} 35%, transparent);
+      background: color-mix(in srgb, {{project.branding.primaryContrast}} 12%, transparent);
+      color: {{project.branding.primaryContrast}};
+    }
+
+    /* La "firma" del branding (ver skill frontend-design): una franja fina
+       con los 3 colores vivos de la marca, siempre en el mismo orden —
+       reconocible de un vistazo sin necesidad de leer nada. */
+    .qa-brand-stripe {
+      height: 4px;
+      background: linear-gradient(
+        90deg,
+        {{project.branding.accentColor}},
+        {{project.branding.highlightColor}},
+        {{project.branding.ctaColor}}
+      );
+    }
+  {{/if}}
+
   .qa-card {
     background: var(--qa-bg-elevated);
     border: 1px solid var(--qa-border);

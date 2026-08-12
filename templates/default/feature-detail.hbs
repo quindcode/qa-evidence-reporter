@@ -8,26 +8,13 @@
     {{> styles}}
   </head>
   <body>
+    {{#> header heading=feature.name}}
+      {{project.projectName}}
+      {{#if feature.tags.length}} · {{#each feature.tags}}<span class="qa-tag">#{{this}}</span> {{/each}}{{/if}}
+    {{/header}}
+
     <div class="qa-container">
       <a class="qa-back-link" href="{{basePath}}index.html">&larr; Volver al dashboard</a>
-
-      <header class="qa-topbar">
-        <div>
-          <h1>{{feature.name}}</h1>
-          <p class="qa-meta">
-            {{project.projectName}}
-            {{#if feature.tags.length}} · {{#each feature.tags}}<span class="qa-tag">#{{this}}</span> {{/each}}{{/if}}
-          </p>
-        </div>
-        <button
-          id="qa-theme-toggle"
-          class="qa-theme-toggle"
-          type="button"
-          aria-label="Cambiar entre tema claro y oscuro"
-        >
-          🌓 Tema
-        </button>
-      </header>
 
       <section class="qa-card">
         <div class="qa-dashboard-grid">

@@ -8,6 +8,7 @@ import { createGherkinParser } from '../../core/parser/index.js';
 import { createSessionEngine } from '../../core/session/index.js';
 import type { ServerContext } from './context.js';
 import { createErrorHandler } from './errors.js';
+import { createBrandingRouter } from './routes/branding.js';
 import { createFeaturesRouter } from './routes/features.js';
 import { createReportRouter } from './routes/report.js';
 import { createSessionRouter } from './routes/session.js';
@@ -45,6 +46,7 @@ export function createApp(context: ServerContext): Express {
   app.use('/api', createFeaturesRouter(context, services));
   app.use('/api', createSessionRouter(context, services));
   app.use('/api', createReportRouter(context, services));
+  app.use(createBrandingRouter(context));
 
   // Estáticos: evidencia ya adjuntada (previews sin base64) y el último
   // reporte generado (previsualización sin descargar el ZIP) — ver

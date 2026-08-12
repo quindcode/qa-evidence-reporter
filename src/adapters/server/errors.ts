@@ -17,6 +17,7 @@ export const NOTHING_TO_REPORT = 'NOTHING_TO_REPORT';
 export const NO_REPORT_GENERATED = 'NO_REPORT_GENERATED';
 export const FEATURE_NOT_FOUND = 'FEATURE_NOT_FOUND';
 export const INVALID_REQUEST_BODY = 'INVALID_REQUEST_BODY';
+export const NO_BRANDING_LOGO = 'NO_BRANDING_LOGO';
 
 /**
  * Mapa único código→status HTTP (ver la consigna de esta fase: "mapa
@@ -42,6 +43,7 @@ const ERROR_STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [NO_REPORT_GENERATED]: 404,
   [FEATURE_NOT_FOUND]: 400,
   [INVALID_REQUEST_BODY]: 400,
+  [NO_BRANDING_LOGO]: 404,
 };
 
 export function statusForErrorCode(code: string): number {

@@ -32,6 +32,7 @@ async function makePngBuffer(sizeHint: 'small' | 'large' = 'small'): Promise<Buf
 async function buildContext(
   projectRoot: string,
   overrides: Partial<QaConfig> = {},
+  brandingLogoAbsolutePath: string | null = null,
 ): Promise<ServerContext> {
   const featuresDir = join(projectRoot, 'features');
   const evidenceBaseDir = join(projectRoot, 'evidence');
@@ -54,6 +55,7 @@ async function buildContext(
     evidenceBaseDir,
     reportsDir,
     templateDir: DEFAULT_TEMPLATE_DIR,
+    brandingLogoAbsolutePath,
   };
 }
 
@@ -77,6 +79,87 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(response.body.features[0].id).toBe('login.feature');
     expect(response.body.features[0].name).toContain('Inicio de sesión');
     expect(response.body.session).toEqual({ exists: false });
+    expect(response.body.projectName).toBe('Proyecto de prueba');
+  });
+
+  describe('branding', () => {
+    it('GET /api/features sin branding configurado: todos los campos en null, logoUrl null', async () => {
+      const app = createApp(await buildContext(projectRoot));
+
+      const response = await request(app).get('/api/features').expect(200);
+
+      expect(response.body.branding).toEqual({
+        logoUrl: null,
+        primaryColor: null,
+        accentColor: null,
+        highlightColor: null,
+        ctaColor: null,
+      });
+    });
+
+    it('GET /api/features con branding configurado: expone los colores y logoUrl apunta a /branding/logo', async () => {
+      const logoPath = join(projectRoot, 'branding', 'logo.png');
+      await mkdir(join(projectRoot, 'branding'), { recursive: true });
+      await writeFile(logoPath, await makePngBuffer());
+
+      const app = createApp(
+        await buildContext(
+          projectRoot,
+          {
+            branding: {
+              logoPath: 'branding/logo.png',
+              primaryColor: '#1e3543',
+              accentColor: '#00c4e9',
+              highlightColor: '#ffb91c',
+              ctaColor: '#ff5530',
+            },
+          },
+          logoPath,
+        ),
+      );
+
+      const response = await request(app).get('/api/features').expect(200);
+
+      expect(response.body.branding).toEqual({
+        logoUrl: '/branding/logo',
+        primaryColor: '#1e3543',
+        accentColor: '#00c4e9',
+        highlightColor: '#ffb91c',
+        ctaColor: '#ff5530',
+      });
+    });
+
+    it('GET /branding/logo sirve el archivo real cuando está configurado', async () => {
+      const logoPath = join(projectRoot, 'branding', 'logo.png');
+      await mkdir(join(projectRoot, 'branding'), { recursive: true });
+      const logoBuffer = await makePngBuffer();
+      await writeFile(logoPath, logoBuffer);
+
+      const app = createApp(await buildContext(projectRoot, {}, logoPath));
+
+      const response = await request(app).get('/branding/logo').expect(200);
+
+      expect(response.headers['content-type']).toContain('image/png');
+      expect(Buffer.compare(response.body as Buffer, logoBuffer)).toBe(0);
+    });
+
+    it('GET /branding/logo sin logo configurado -> 404 NO_BRANDING_LOGO', async () => {
+      const app = createApp(await buildContext(projectRoot));
+
+      const response = await request(app).get('/branding/logo').expect(404);
+
+      expect(response.body.error.code).toBe('NO_BRANDING_LOGO');
+    });
+
+    it('GET /branding/logo con logoPath configurado pero el archivo no existe en disco -> 404 NO_BRANDING_LOGO', async () => {
+      const app = createApp(
+        await buildContext(projectRoot, {}, join(projectRoot, 'branding', 'no-existe.png')),
+      );
+
+      const response = await request(app).get('/branding/logo').expect(404);
+
+      expect(response.body.error.code).toBe('NO_BRANDING_LOGO');
+    });
   });
 
   it('GET / responde el placeholder (o la SPA real, si ya se corrió "npm run build:ui")', async () => {

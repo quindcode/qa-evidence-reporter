@@ -36,6 +36,8 @@ export interface ServerContext {
   reportsDir: string;
   /** Ruta absoluta al `templateDir` a usar (`config.reportTemplate` resuelto, o el template embebido — ver `templatePaths.ts`). */
   templateDir: string;
+  /** Ruta absoluta al logo de marca (`config.branding.logoPath` resuelto), o `null` si no hay logo configurado. */
+  brandingLogoAbsolutePath: string | null;
 }
 
 export interface BuildServerContextDeps {
@@ -75,5 +77,8 @@ export async function buildServerContext(
     evidenceBaseDir: resolve(projectRoot, config.evidenceDir),
     reportsDir: resolve(projectRoot, config.reportsDir),
     templateDir: resolveTemplateDir(projectRoot, config.reportTemplate),
+    brandingLogoAbsolutePath: config.branding.logoPath
+      ? resolve(projectRoot, config.branding.logoPath)
+      : null,
   };
 }

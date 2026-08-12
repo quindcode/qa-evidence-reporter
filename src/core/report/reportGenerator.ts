@@ -1,10 +1,12 @@
-import { copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, extname, join } from 'node:path';
 
 import { createEvidenceStore } from '../evidence/index.js';
 import { ReportGenerationError } from '../types/errors.js';
 import type { EvidenceFile, EvidenceStore } from '../types/evidence.js';
 import type {
+  BrandingInput,
+  BrandingMeta,
   EvidenceReportView,
   FeatureDetailPageData,
   FeatureReportView,
@@ -43,6 +45,8 @@ export interface ReportGeneratorConfig {
    * inyecta un `EvidenceStore` completo).
    */
   evidenceBaseDir: string;
+  /** Branding opcional (logo + paleta) — ver `BrandingInput`/`BrandingMeta` en `core/types/report.ts`. Ausente/vacío por defecto: el reporte se ve igual que siempre. */
+  branding?: BrandingInput;
 }
 
 /** Dependencias inyectables de `createReportGenerator` (mismo patrón que `SessionEngineDeps`/`EvidenceStoreDeps` de fase 2: opcionales, con default de producción). */
@@ -379,11 +383,13 @@ async function buildReportData(
 ): Promise<ReportData> {
   const features = await buildFeatureViews(state, evidenceStore, config.evidenceBaseDir, outputDir);
   const summary = buildResultSummary(buildResultCounts(flattenAllSteps(state)));
+  const branding = await buildBrandingMeta(config.branding, outputDir);
 
   return {
     project: {
       projectName: config.projectName,
       generatedAt: clock(),
+      branding,
     },
     summary,
     dashboard: {
@@ -392,4 +398,114 @@ async function buildReportData(
     },
     features,
   };
+}
+
+/** Carpeta (relativa a `outputDir`) donde queda copiado el logo de marca, si hay uno configurado. */
+const BRANDING_ASSETS_DIR = 'branding';
+
+/**
+ * Resuelve `BrandingInput` (crudo, tal como lo pasó el caller) a
+ * `BrandingMeta` (listo para el template): copia el logo a
+ * `outputDir/assets/branding/logo{ext}` si está configurado y el archivo
+ * existe, y calcula el color de texto legible sobre `primaryColor`/
+ * `accentColor` (ver `pickReadableTextColor`).
+ *
+ * Decisión de diseño (best-effort, nunca lanza): igual que
+ * `tryGenerateThumbnail` en `core/evidence/evidenceStore.ts`, un logo
+ * configurado con una ruta que no existe (typo, archivo movido) NO debe
+ * hacer fallar todo `generate()` — el reporte sigue siendo válido y útil
+ * sin logo, solo pierde ese detalle visual. `qa-config.json` valida el
+ * FORMATO de los colores (hex) en `core/config`, pero no que el archivo del
+ * logo exista — esa comprobación solo es posible acá, con acceso real al
+ * filesystem del proyecto.
+ */
+async function buildBrandingMeta(
+  branding: BrandingInput | undefined,
+  outputDir: string,
+): Promise<BrandingMeta> {
+  const logoAssetPath = await copyLogoAsset(branding?.logoAbsolutePath ?? null, outputDir);
+  const primaryColor = branding?.primaryColor ?? null;
+  const accentColor = branding?.accentColor ?? null;
+  const highlightColor = branding?.highlightColor ?? null;
+  const ctaColor = branding?.ctaColor ?? null;
+
+  return {
+    logoAssetPath,
+    primaryColor,
+    primaryContrast: primaryColor ? pickReadableTextColor(primaryColor) : null,
+    accentColor,
+    accentContrast: accentColor ? pickReadableTextColor(accentColor) : null,
+    highlightColor,
+    ctaColor,
+    isBranded: Boolean(logoAssetPath || primaryColor || accentColor || highlightColor || ctaColor),
+  };
+}
+
+/** Copia el logo a `outputDir/assets/branding/logo{ext}` y devuelve su ruta relativa a `outputDir`, o `null` si no hay logo configurado o no se pudo copiar (ver nota de diseño en `buildBrandingMeta`). */
+async function copyLogoAsset(
+  logoAbsolutePath: string | null,
+  outputDir: string,
+): Promise<string | null> {
+  if (!logoAbsolutePath) return null;
+
+  try {
+    await stat(logoAbsolutePath);
+    const destDir = join(outputDir, 'assets', BRANDING_ASSETS_DIR);
+    await mkdir(destDir, { recursive: true });
+    const destFilename = `logo${extname(logoAbsolutePath)}`;
+    await copyFile(logoAbsolutePath, join(destDir, destFilename));
+    return toAssetPath(`${BRANDING_ASSETS_DIR}/${destFilename}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Elige `#ffffff` o `#111111` como color de texto sobre un fondo `hexColor`,
+ * comparando el ratio de contraste WCAG de cada candidato contra el fondo y
+ * devolviendo el que tenga mayor contraste (fórmula de luminancia relativa
+ * estándar, la misma que usa cualquier verificador de contraste WCAG). No
+ * asume ningún color de marca específico — funciona igual de bien para un
+ * navy oscuro (devuelve blanco) que para un cian claro (devuelve casi negro,
+ * `#111111`, que da ~9:1 de contraste contra `#00c4e9` — mejor que blanco,
+ * que apenas llega a ~2:1 y no pasa WCAG AA).
+ *
+ * Defensivo: si `hexColor` no es un hex válido (`#rgb`/`#rrggbb`), devuelve
+ * `#111111` (texto oscuro es la apuesta más segura sobre un fondo
+ * desconocido) en vez de lanzar — la validación de formato real ya ocurre
+ * en `core/config` (zod), esto es solo una segunda red de seguridad.
+ */
+export function pickReadableTextColor(hexColor: string): '#ffffff' | '#111111' {
+  const rgb = parseHexColor(hexColor);
+  if (!rgb) return '#111111';
+
+  const bgLuminance = relativeLuminance(rgb);
+  const contrastWithWhite = (1 + 0.05) / (bgLuminance + 0.05);
+  const contrastWithBlack = (bgLuminance + 0.05) / 0.05;
+
+  return contrastWithWhite >= contrastWithBlack ? '#ffffff' : '#111111';
+}
+
+function parseHexColor(hexColor: string): [number, number, number] | null {
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hexColor.trim());
+  const hex = match?.[1];
+  if (!hex) return null;
+
+  const full = hex.length === 3 ? hex.replace(/(.)/g, '$1$1') : hex;
+  return [
+    parseInt(full.slice(0, 2), 16),
+    parseInt(full.slice(2, 4), 16),
+    parseInt(full.slice(4, 6), 16),
+  ];
+}
+
+/** Convierte un canal de color (0-255) a su valor lineal WCAG, en [0, 1]. */
+function toLinearChannel(channel: number): number {
+  const normalized = channel / 255;
+  return normalized <= 0.03928 ? normalized / 12.92 : Math.pow((normalized + 0.055) / 1.055, 2.4);
+}
+
+/** Luminancia relativa WCAG de un color RGB (0-255 por canal), en [0, 1]. */
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  return 0.2126 * toLinearChannel(r) + 0.7152 * toLinearChannel(g) + 0.0722 * toLinearChannel(b);
 }

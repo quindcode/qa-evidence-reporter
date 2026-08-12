@@ -100,6 +100,20 @@ export type SessionSummary =
   { exists: false } | { exists: true; status: SessionState['status']; projectName: string };
 
 /**
+ * Forma de `GET /api/features` -> `branding` (ver `routes/features.ts` y
+ * `routes/branding.ts`). `logoUrl`, cuando no es `null`, es SIEMPRE
+ * `/branding/logo` (una ruta del propio server, nunca una ruta de
+ * filesystem) — se usa directamente como `<img src={logoUrl}>`.
+ */
+export interface Branding {
+  logoUrl: string | null;
+  primaryColor: string | null;
+  accentColor: string | null;
+  highlightColor: string | null;
+  ctaColor: string | null;
+}
+
+/**
  * Deriva el resultado de un scenario a partir de sus steps — misma tabla de
  * prioridad que `core/types/session.ts` (`deriveScenarioResult`,
  * `fail > pending > skip > pass`), duplicada acá por la misma razón que el

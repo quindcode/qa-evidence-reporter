@@ -26,6 +26,26 @@
   --warning: #b45309;
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
   color-scheme: light;
+
+  /*
+   * Branding opcional (logo + paleta de empresa/cliente, ver `App.tsx` y
+   * `qa-config.json` -> `branding`). Estos son los defaults SIN branding
+   * configurado: `--brand-primary`/`--brand-primary-contrast` calzan con el
+   * header neutro de siempre (mismo fondo/texto que ya tenía), y
+   * `--brand-cta`/`--brand-cta-contrast` calzan con `--accent`/
+   * `--accent-contrast` (el botón "Exportar ZIP" se ve como cualquier otro
+   * botón secundario hasta que haya un `ctaColor` configurado). Cuando SÍ
+   * hay branding, `App.tsx` sobreescribe estas variables con
+   * `style.setProperty` en `<html>` — un estilo inline siempre gana por
+   * sobre cualquier regla de este archivo, en cualquier tema, sin
+   * necesitar `!important` (a diferencia del reporte HTML estático, que sí
+   * lo necesita — ver `templates/default/partials/styles.hbs`).
+   */
+  --brand-primary: var(--bg-elevated);
+  --brand-primary-contrast: var(--text);
+  --brand-highlight: var(--border);
+  --brand-cta: var(--accent);
+  --brand-cta-contrast: var(--accent-contrast);
 }
 
 :root[data-theme='dark'] {
@@ -110,11 +130,52 @@ body {
   background: var(--bg-elevated);
 }
 
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.app-header__logo {
+  height: 32px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+
 .app-header__title {
   font-size: 1.1rem;
   margin: 0;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+/* Cuando hay branding configurado (logo y/o primaryColor, ver `App.tsx`):
+   el header pasa a usar el color de marca en vez del neutro de siempre. */
+.app-header--branded {
+  background: var(--brand-primary);
+  border-bottom-color: transparent;
+}
+
+.app-header--branded .app-header__title {
+  color: var(--brand-primary-contrast);
+}
+
+.app-header--branded .theme-toggle {
+  border-color: color-mix(in srgb, var(--brand-primary-contrast) 35%, transparent);
+  background: color-mix(in srgb, var(--brand-primary-contrast) 12%, transparent);
+  color: var(--brand-primary-contrast);
+}
+
+/* La "firma" del branding (ver skill frontend-design): una franja fina con
+   los 3 colores vivos de la marca, siempre en el mismo orden — mismo
+   elemento que ya lleva el reporte HTML (ver `qa-brand-stripe` en
+   `templates/default/partials/styles.hbs`), para que el runner y el
+   reporte se sientan parte del mismo producto. */
+.app-header__stripe {
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--brand-highlight), var(--brand-cta));
 }
 
 .app-main {
@@ -163,6 +224,19 @@ body {
   background: none;
   color: var(--accent);
   padding: 0.25rem 0;
+}
+
+/* Acción destacada puntual (hoy: "Exportar como ZIP", ver Runner.tsx) —
+   usa `--brand-cta` (default: igual a `--accent` si no hay branding, ver
+   `:root` arriba), NUNCA los colores semánticos de resultado. */
+.button--cta {
+  background: var(--brand-cta);
+  border-color: var(--brand-cta);
+  color: var(--brand-cta-contrast);
+}
+
+.button--cta:hover:not(:disabled) {
+  filter: brightness(1.06);
 }
 
 .button--pass {

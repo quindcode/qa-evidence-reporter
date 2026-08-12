@@ -101,6 +101,55 @@ export interface ProjectMeta {
    * armar `ReportGeneratorConfig` antes de llamar a `generate()`.
    */
   executedBy?: string;
+  /** Branding opcional del cliente/empresa (logo + paleta) — ver `BrandingMeta`. */
+  branding: BrandingMeta;
+}
+
+/**
+ * Branding opcional de un proyecto, ya resuelto para el template (logo
+ * copiado a `outputDir/assets/`, colores de contraste ya calculados — el
+ * template NUNCA decide qué color de texto usar sobre un color de marca,
+ * eso es responsabilidad de `reportGenerator.ts`, ver `pickReadableTextColor`).
+ *
+ * Decisión de diseño (`isBranded` explícito, no `Boolean(logoAssetPath || ...)`
+ * en el template): Handlebars no tiene un operador `||` nativo entre
+ * múltiples valores sin escribir un helper custom — es más simple resolver
+ * esta única condición una vez en TypeScript que en cada template que
+ * necesite decidir "¿muestro el header de marca o el neutro?".
+ *
+ * Cuando ningún campo de branding está configurado en `qa-config.json`
+ * (el caso por defecto, y el único caso para `sample-project/`), TODOS los
+ * campos quedan `null` e `isBranded` es `false` — el reporte se ve
+ * EXACTAMENTE igual que antes de que existiera esta feature.
+ */
+export interface BrandingMeta {
+  /** Ruta relativa a `outputDir` del logo ya copiado (p. ej. `"assets/branding/logo.png"`), o `null` si no hay logo configurado, el archivo no existe, o no se pudo copiar (best-effort, ver `reportGenerator.ts`). */
+  logoAssetPath: string | null;
+  primaryColor: string | null;
+  /** Color de texto legible sobre `primaryColor` (`#ffffff` o `#111111`, elegido por contraste WCAG — ver `pickReadableTextColor`). `null` si `primaryColor` es `null`. */
+  primaryContrast: string | null;
+  accentColor: string | null;
+  /** Mismo criterio que `primaryContrast`, para texto sobre `accentColor`. */
+  accentContrast: string | null;
+  highlightColor: string | null;
+  ctaColor: string | null;
+  isBranded: boolean;
+}
+
+/**
+ * Branding tal como lo recibe `createReportGenerator` desde el caller (CLI
+ * `report`/server), ANTES de resolver el logo a una ruta copiada o calcular
+ * contraste — ver `BrandingMeta` para la forma ya resuelta que llega al
+ * template. Todos los campos opcionales/nulleables: un proyecto sin
+ * branding configurado no pasa este objeto en absoluto (o lo pasa vacío).
+ */
+export interface BrandingInput {
+  /** Ruta ABSOLUTA en el filesystem al archivo de logo (ya resuelta por el caller a partir de `qa-config.json` → `branding.logoPath`), o `null`/`undefined`. */
+  logoAbsolutePath?: string | null;
+  primaryColor?: string | null;
+  accentColor?: string | null;
+  highlightColor?: string | null;
+  ctaColor?: string | null;
 }
 
 /**

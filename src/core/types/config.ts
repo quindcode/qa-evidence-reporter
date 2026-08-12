@@ -54,6 +54,38 @@ const LoggingConfigSchema = z.object({
   level: z.enum(LOG_LEVELS).default('info'),
 });
 
+/** `#rgb` o `#rrggbb`, case-insensitive — mismo formato que acepta `pickReadableTextColor` en `core/report/reportGenerator.ts`. */
+const HEX_COLOR_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+const hexColorField = () =>
+  z
+    .string()
+    .regex(HEX_COLOR_RE, 'debe ser un color hexadecimal (ej. "#1e3543" o "#fff")')
+    .nullable()
+    .default(null);
+
+/**
+ * Branding opcional de un proyecto (logo + paleta), para que el reporte HTML
+ * y el runner puedan mostrar la identidad visual de una empresa/cliente en
+ * vez del tema neutro por defecto — ver `core/types/report.ts` (`BrandingInput`/
+ * `BrandingMeta`) para cómo se resuelve, y ARCHITECTURE.md para el mapeo de
+ * roles (`primaryColor` = header, `accentColor` = acento/links/botones,
+ * `highlightColor` = detalle de marca, `ctaColor` = acción destacada puntual).
+ *
+ * Todos los campos son opcionales/nulleables y el default de todo el bloque
+ * es "nada configurado" — un proyecto sin `branding` en su `qa-config.json`
+ * (el caso de `sample-project/` y de cualquier proyecto nuevo creado con
+ * `init`) se ve exactamente igual que antes de que existiera esta feature.
+ */
+const BrandingConfigSchema = z.object({
+  /** Ruta al archivo de logo, relativa a la raíz del proyecto (mismo criterio que `featuresDir`/`evidenceDir`), o `null` si no hay logo. */
+  logoPath: z.string().min(1).nullable().default(null),
+  primaryColor: hexColorField(),
+  accentColor: hexColorField(),
+  highlightColor: hexColorField(),
+  ctaColor: hexColorField(),
+});
+
 /**
  * Esquema completo de `qa-config.json`. Cualquier clave desconocida en el
  * JSON de entrada (p. ej. `"$schema"`, presente en el archivo que escribe
@@ -71,6 +103,7 @@ export const QaConfigSchema = z.object({
   server: ServerConfigSchema.prefault({}),
   evidence: EvidenceConfigSchema.prefault({}),
   logging: LoggingConfigSchema.prefault({}),
+  branding: BrandingConfigSchema.prefault({}),
   /** Ruta a un `templateDir` custom, o `null` para usar el template embebido (`templates/default`) — ver `adapters/cli`. */
   reportTemplate: z.string().nullable().default(null),
 });

@@ -7,10 +7,54 @@ import { ErrorBanner } from './components/ErrorBanner';
 import { FeatureSelect } from './components/FeatureSelect';
 import { Runner } from './components/Runner';
 import { ThemeToggle } from './components/ThemeToggle';
+import { pickReadableTextColor } from './colors';
 import { useTheme } from './hooks/useTheme';
-import type { CurrentStepInfo, FeatureSummary, SessionState, SessionSummary } from './types';
+import type {
+  Branding,
+  CurrentStepInfo,
+  FeatureSummary,
+  SessionState,
+  SessionSummary,
+} from './types';
 
 type Phase = 'loading' | 'select' | 'runner';
+
+const NO_BRANDING: Branding = {
+  logoUrl: null,
+  primaryColor: null,
+  accentColor: null,
+  highlightColor: null,
+  ctaColor: null,
+};
+
+/**
+ * Aplica la paleta de marca como custom properties inline en `<html>` — un
+ * estilo inline gana por sobre CUALQUIER regla de `styles.css` en cualquier
+ * tema (claro/oscuro/`prefers-color-scheme`), sin necesitar `!important`
+ * (ver comentario de estas variables en `styles.css`, `:root`). No hace
+ * nada por los campos que vienen `null` (el CSS ya tiene un default
+ * razonable para ese caso — "sin branding configurado, se ve como
+ * siempre").
+ */
+function applyBranding(branding: Branding): void {
+  const root = document.documentElement.style;
+
+  if (branding.accentColor) {
+    root.setProperty('--accent', branding.accentColor);
+    root.setProperty('--accent-contrast', pickReadableTextColor(branding.accentColor));
+  }
+  if (branding.primaryColor) {
+    root.setProperty('--brand-primary', branding.primaryColor);
+    root.setProperty('--brand-primary-contrast', pickReadableTextColor(branding.primaryColor));
+  }
+  if (branding.highlightColor) {
+    root.setProperty('--brand-highlight', branding.highlightColor);
+  }
+  if (branding.ctaColor) {
+    root.setProperty('--brand-cta', branding.ctaColor);
+    root.setProperty('--brand-cta-contrast', pickReadableTextColor(branding.ctaColor));
+  }
+}
 
 /**
  * Componente raíz: decide entre la pantalla de selección de features y el
@@ -27,12 +71,17 @@ export function App(): JSX.Element {
   const [currentStep, setCurrentStep] = useState<CurrentStepInfo | null>(null);
   const [error, setError] = useState<ApiRequestError | null>(null);
   const [busy, setBusy] = useState(false);
+  const [projectName, setProjectName] = useState('qa-evidence-reporter');
+  const [branding, setBranding] = useState<Branding>(NO_BRANDING);
 
   const loadFeatures = useCallback(async () => {
     try {
       const response = await api.getFeatures();
       setFeatures(response.features);
       setSessionSummary(response.session);
+      setProjectName(response.projectName);
+      setBranding(response.branding);
+      applyBranding(response.branding);
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err : new ApiRequestError('UNKNOWN_ERROR', String(err)),
@@ -45,6 +94,8 @@ export function App(): JSX.Element {
   useEffect(() => {
     void loadFeatures();
   }, [loadFeatures]);
+
+  const isBranded = Boolean(branding.logoUrl || branding.primaryColor);
 
   async function handleStart(featureIds: string[], force: boolean): Promise<void> {
     setBusy(true);
@@ -84,10 +135,16 @@ export function App(): JSX.Element {
 
   return (
     <div class="app">
-      <header class="app-header">
-        <h1 class="app-header__title">qa-evidence-reporter</h1>
+      <header class={`app-header${isBranded ? ' app-header--branded' : ''}`}>
+        <div class="app-header__brand">
+          {branding.logoUrl && (
+            <img class="app-header__logo" src={branding.logoUrl} alt={`Logo de ${projectName}`} />
+          )}
+          <h1 class="app-header__title">{projectName}</h1>
+        </div>
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </header>
+      {isBranded && <div class="app-header__stripe" aria-hidden="true" />}
 
       {error && (
         <ErrorBanner code={error.code} message={error.message} onDismiss={() => setError(null)} />

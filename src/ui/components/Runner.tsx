@@ -296,7 +296,7 @@ export function Runner({
                 <a class="button" href={reportUrl} target="_blank" rel="noreferrer">
                   Ver reporte
                 </a>
-                <a class="button" href="/api/report/export-zip" download="qa-report.zip">
+                <a class="button button--cta" href="/api/report/export-zip" download="qa-report.zip">
                   Exportar como ZIP
                 </a>
               </>

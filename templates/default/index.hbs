@@ -8,25 +8,12 @@
     {{> styles}}
   </head>
   <body>
-    <div class="qa-container">
-      <header class="qa-topbar">
-        <div>
-          <h1>{{project.projectName}}</h1>
-          <p class="qa-meta">
-            Generado el {{formatDate project.generatedAt}}
-            {{#if project.executedBy}} · Ejecutado por {{project.executedBy}}{{/if}}
-          </p>
-        </div>
-        <button
-          id="qa-theme-toggle"
-          class="qa-theme-toggle"
-          type="button"
-          aria-label="Cambiar entre tema claro y oscuro"
-        >
-          🌓 Tema
-        </button>
-      </header>
+    {{#> header heading=project.projectName}}
+      Generado el {{formatDate project.generatedAt}}
+      {{#if project.executedBy}} · Ejecutado por {{project.executedBy}}{{/if}}
+    {{/header}}
 
+    <div class="qa-container">
       <section class="qa-card" aria-labelledby="qa-dashboard-heading">
         <h2 id="qa-dashboard-heading">Resumen general</h2>
         <div class="qa-dashboard-grid">

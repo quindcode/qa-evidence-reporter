@@ -58,7 +58,17 @@ export async function runReport(
   const outputDir = resolve(cwd, config.reportsDir);
   const evidenceBaseDir = resolve(cwd, config.evidenceDir);
   const generator = createReportGenerator(
-    { projectName: config.projectName, evidenceBaseDir },
+    {
+      projectName: config.projectName,
+      evidenceBaseDir,
+      branding: {
+        logoAbsolutePath: config.branding.logoPath ? resolve(cwd, config.branding.logoPath) : null,
+        primaryColor: config.branding.primaryColor,
+        accentColor: config.branding.accentColor,
+        highlightColor: config.branding.highlightColor,
+        ctaColor: config.branding.ctaColor,
+      },
+    },
     templateEngine,
   );
 

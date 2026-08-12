@@ -43,7 +43,17 @@ export function createReportRouter(context: ServerContext, services: CoreService
 
       const templateEngine = createHandlebarsTemplateEngine(context.templateDir);
       const generator = createReportGenerator(
-        { projectName: context.config.projectName, evidenceBaseDir: context.evidenceBaseDir },
+        {
+          projectName: context.config.projectName,
+          evidenceBaseDir: context.evidenceBaseDir,
+          branding: {
+            logoAbsolutePath: context.brandingLogoAbsolutePath,
+            primaryColor: context.config.branding.primaryColor,
+            accentColor: context.config.branding.accentColor,
+            highlightColor: context.config.branding.highlightColor,
+            ctaColor: context.config.branding.ctaColor,
+          },
+        },
         templateEngine,
       );
 

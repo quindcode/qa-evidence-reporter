@@ -110,6 +110,9 @@ export async function runRun(cwd: string, deps: RunCommandDeps = {}): Promise<Ru
     evidenceBaseDir: resolve(cwd, config.evidenceDir),
     reportsDir: resolve(cwd, config.reportsDir),
     templateDir: resolveTemplateDir(cwd, config.reportTemplate),
+    brandingLogoAbsolutePath: config.branding.logoPath
+      ? resolve(cwd, config.branding.logoPath)
+      : null,
   };
 
   const startServerFn = deps.startServer ?? startServerReal;
