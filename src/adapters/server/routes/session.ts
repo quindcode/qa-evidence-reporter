@@ -83,16 +83,22 @@ function extractFeatureIds(body: unknown): string[] {
  * Rutas de sesión: seleccionar features, consultar/navegar el estado,
  * subir/quitar evidencia y marcar resultados.
  *
- * Decisión de diseño (`POST /api/session/select` sobre una sesión en
- * curso): si ya existe una sesión con `status !== 'completed'`, se rechaza
- * con `409` (`SESSION_ALREADY_IN_PROGRESS`) a menos que el caller pase
- * `?force=true` — para no pisar accidentalmente progreso no completado
- * (evidencia/resultados ya registrados) solo porque la UI reenvió la
- * pantalla de selección. `force=true` es una confirmación explícita del QA
- * ("sí, quiero descartar la sesión anterior y empezar de nuevo"). Si la
- * sesión anterior YA está `'completed'`, se permite seleccionar de nuevo sin
- * pedir confirmación (empezar una sesión nueva sobre trabajo ya terminado no
- * arriesga perder nada).
+ * Decisión de diseño (`POST /api/session/select` sobre una sesión
+ * existente) — CORREGIDA tras un incidente real, ver ARCHITECTURE.md
+ * "Cambios registrados": la versión original de esta regla exigía
+ * `?force=true` solo si `existing.status !== 'completed'`, asumiendo que
+ * una sesión `'completed'` "no arriesga perder nada" al re-seleccionar.
+ * Esa asunción es FALSA: una sesión puede llegar a `'completed'` con
+ * evidencia/notas/resultados ya registrados y sin que se haya generado
+ * un reporte todavía (de hecho, `'completed'` es el estado normal justo
+ * ANTES de generar el reporte) — permitir descartarla sin confirmación
+ * perdió evidencia real de un usuario. La regla real ahora es:
+ * `sessionHasRecordedProgress(existing)` (cualquier step con resultado
+ * distinto de `'pending'`, con evidencia adjunta, o con notas) exige
+ * `?force=true` sin importar `status`. Un `'completed'` alcanzado sin
+ * marcar nada (navegando con "Siguiente" sin registrar resultados) sigue
+ * sin pedir confirmación, porque ahí sí es cierto que no hay nada que
+ * perder.
  */
 export function createSessionRouter(context: ServerContext, services: CoreServices): Router {
   const router = Router();
@@ -104,10 +110,11 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
       const force = req.query.force === 'true';
 
       const existing = await loadCurrentSessionOrNull(services.sessionEngine);
-      if (existing && existing.status !== 'completed' && !force) {
+      if (existing && sessionHasRecordedProgress(existing) && !force) {
         throw new QaError(
-          'Ya hay una sesión en curso sin completar. Repetí la solicitud con "?force=true" si ' +
-            'querés descartarla y empezar una nueva (se perderá el progreso no exportado a un reporte).',
+          'Ya hay una sesión con progreso registrado (resultados, evidencia o notas). Repetí la ' +
+            'solicitud con "?force=true" si querés descartarla y empezar una nueva (se perderá ' +
+            'todo lo no exportado a un reporte).',
           SESSION_ALREADY_IN_PROGRESS,
         );
       }
@@ -315,6 +322,23 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
   );
 
   return router;
+}
+
+/**
+ * `true` si CUALQUIER step de `state` tiene algo que se perdería al
+ * descartar la sesión: un resultado ya marcado (`result !== 'pending'`),
+ * evidencia adjunta, o notas escritas. Ver el JSDoc de
+ * `createSessionRouter` arriba para el incidente real que motivó
+ * reemplazar el chequeo anterior (que usaba solo `status`) por este.
+ */
+function sessionHasRecordedProgress(state: SessionState): boolean {
+  return state.selectedFeatures.some((feature) =>
+    feature.scenarios.some((scenario) =>
+      scenario.steps.some(
+        (step) => step.result !== 'pending' || step.evidenceFileIds.length > 0 || Boolean(step.notes),
+      ),
+    ),
+  );
 }
 
 async function requireSession(

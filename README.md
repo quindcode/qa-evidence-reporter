@@ -238,10 +238,14 @@ trampas reales del modelo actual que conviene conocer antes de empezar.
   sesión actual (ver punto siguiente) antes de editar y volver a
   seleccionar.
 - **No vuelvas a pasar por la pantalla de selección "para actualizar" sin
-  pensarlo.** Si hay una sesión sin completar, `run` te va a pedir
-  confirmación explícita porque **selecciona de nuevo = descarta el
-  progreso no exportado a un reporte**. Si no estás seguro de haber
-  guardado lo que ya avanzaste, generá y exportá el reporte primero.
+  pensarlo.** Si la sesión tiene progreso registrado (algún resultado
+  marcado, evidencia adjunta, o notas) — esté "en curso" **o ya
+  "completada"** — `run` te va a pedir confirmación explícita, porque
+  **selecciona de nuevo = descarta todo lo no exportado a un reporte**.
+  Una sesión "completada" NO es sinónimo de "ya está a salvo": es
+  justamente el estado normal justo ANTES de generar el reporte, así que
+  puede tener evidencia real que todavía no exportaste. Si no estás
+  seguro, generá y exportá el reporte primero.
 - **No corras dos instancias de `run` en paralelo sobre el mismo
   proyecto.** Todas comparten el mismo `.qa-evidence-reporter/session.json`
   sin bloqueo de archivo — escrituras concurrentes se pueden pisar entre

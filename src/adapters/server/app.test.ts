@@ -450,13 +450,23 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(response.body.error.code).toBe('UNSUPPORTED_EVIDENCE_FORMAT');
   });
 
-  it('POST /api/session/select sobre una sesión in_progress sin ?force=true -> 409', async () => {
+  it('POST /api/session/select sobre una sesión con progreso registrado sin ?force=true -> 409', async () => {
+    // Regresión: el chequeo original usaba `status !== 'completed'`, no si
+    // había progreso de verdad — ver JSDoc de `createSessionRouter` en
+    // `routes/session.ts` para el incidente real que esto corrige. Acá se
+    // marca un resultado real (no alcanza con solo crear la sesión) antes
+    // de reintentar el select, para probar la condición real.
     const app = createApp(await buildContext(projectRoot));
 
-    await request(app)
+    const selectResponse = await request(app)
       .post('/api/session/select')
       .send({ featureIds: ['login.feature'] })
       .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+    await request(app)
+      .post(`/api/session/step/${stepId}/result`)
+      .send({ result: 'pass' })
+      .expect(200);
 
     const conflictResponse = await request(app)
       .post('/api/session/select')
@@ -466,6 +476,84 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
 
     await request(app)
       .post('/api/session/select?force=true')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+  });
+
+  it('POST /api/session/select sobre una sesión recién creada SIN progreso (todo pending) no exige ?force=true', async () => {
+    // Complemento del test anterior: crear la sesión por sí sola no cuenta
+    // como "progreso" (todos los steps quedan 'pending' hasta que alguien
+    // marca algo) — reseleccionar antes de tocar nada es genuinamente
+    // inofensivo, no debería pedir confirmación.
+    const app = createApp(await buildContext(projectRoot));
+
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+  });
+
+  it('POST /api/session/select sobre una sesión "completed" CON progreso (evidencia) sin ?force=true -> 409', async () => {
+    // El incidente real: una sesión puede llegar a 'completed' con
+    // evidencia ya adjunta y SIN que se haya generado un reporte todavía
+    // (es el estado normal justo antes de generar el reporte). El chequeo
+    // original permitía descartar esto sin pedir confirmación solo porque
+    // `status === 'completed'`, perdiendo la evidencia de un usuario real.
+    const app = createApp(await buildContext(projectRoot));
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', await makePngBuffer(), 'captura.png')
+      .expect(201);
+
+    // Navega hasta completar la sesión sin marcar más resultados (alcanza
+    // con evidencia adjunta en un step para que cuente como "progreso").
+    let status = 'in_progress';
+    while (status !== 'completed') {
+      const navResponse = await request(app)
+        .post('/api/session/navigate')
+        .send({ direction: 'next' })
+        .expect(200);
+      status = navResponse.body.session.status;
+    }
+
+    const conflictResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(409);
+    expect(conflictResponse.body.error.code).toBe('SESSION_ALREADY_IN_PROGRESS');
+  });
+
+  it('POST /api/session/select sobre una sesión "completed" SIN progreso (navegada sin marcar nada) no exige ?force=true', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+
+    let status = 'in_progress';
+    while (status !== 'completed') {
+      const navResponse = await request(app)
+        .post('/api/session/navigate')
+        .send({ direction: 'next' })
+        .expect(200);
+      status = navResponse.body.session.status;
+    }
+
+    await request(app)
+      .post('/api/session/select')
       .send({ featureIds: ['login.feature'] })
       .expect(201);
   });

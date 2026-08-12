@@ -1158,3 +1158,55 @@ Rediseño real (no solo paleta), aplicando la skill `frontend-design`.
   bien. 165 tests en verde (1 actualizado por el rename de clase, ninguno
   nuevo necesario — el rediseño es puramente de presentación sobre datos
   ya cubiertos).
+
+### Post-fase 6 — bugfix real: `POST /session/select` perdía evidencia de sesiones "completed"
+
+Reportado por un usuario real: adjuntó evidencia a varios steps, marcó
+resultados correctamente, pero en el reporte final solo aparecía UNA
+evidencia (la del último step tocado) — el resto de los archivos existían
+físicamente en `evidence/` pero no estaban referenciados en `session.json`.
+
+**Diagnóstico confirmado con datos reales** (no especulado): se cruzaron
+los `mtime` de los archivos físicos de evidencia con `createdAt`/`updatedAt`
+de `session.json`. El `createdAt` de la sesión final era ~6 segundos
+anterior a la única evidencia que sí aparecía — es decir, se había creado
+una sesión NUEVA justo antes de esa subida, descartando silenciosamente
+5 evidencias previas de la sesión anterior (que ya estaba en estado
+`'completed'`).
+
+**Causa raíz real**: `POST /api/session/select` (`routes/session.ts`)
+exigía `?force=true` para descartar una sesión existente solo si
+`existing.status !== 'completed'` — la justificación original (ver el
+JSDoc de fase 5a, ahora corregido) era "una sesión completada no arriesga
+perder nada". Esa premisa es FALSA: `'completed'` es el estado normal de
+una sesión justo ANTES de generar el reporte, y puede tener evidencia real
+sin exportar. En este incidente puntual, un restart del server (hecho por
+la sesión de Claude Code para levantar un build nuevo) interrumpió el
+flujo del usuario; al volver a la pantalla de selección con la sesión ya
+`'completed'`, seleccionar de nuevo no pidió ninguna confirmación y
+descartó el progreso.
+
+**Corrección**: el chequeo pasó de basarse en `status` a basarse en
+progreso real — `sessionHasRecordedProgress(state)` (nueva función en
+`routes/session.ts`): `true` si CUALQUIER step tiene un resultado
+distinto de `'pending'`, evidencia adjunta, o notas, sin importar
+`status`. Un `'completed'` alcanzado navegando con "Siguiente" sin marcar
+nada (posible, ver `Runner.tsx`: navegar y marcar resultado son acciones
+separadas) sigue sin pedir confirmación, porque ahí sí es cierto que no
+hay nada que perder. Tests nuevos en `app.test.ts` cubren las 4
+combinaciones (`in_progress`/`completed` × con/sin progreso real).
+
+**Nota operativa para el futuro** (no es un cambio de código, es un
+recordatorio): reiniciar el server de un proyecto mientras el usuario
+puede estar interactuando con el runner en su navegador es una acción de
+mayor riesgo de lo que parece — no pierde datos por sí sola, pero puede
+llevar al usuario a un flujo (pantalla de selección sobre una sesión ya
+completada) que, antes de esta corrección, sí perdía datos. Preguntar o
+avisar antes de reiniciar un server real de un proyecto del usuario evita
+esta clase de interacción.
+
+Los archivos de evidencia "huérfanos" de este incidente puntual
+(`mi-proyecto-qa/evidence/...`) NO se borraron — siguen físicamente en
+disco bajo las mismas rutas deterministas (`{featureId}/{scenarioId}/{stepId}/`),
+así que son recuperables re-adjuntándolos a mano si el usuario los
+necesita para su reporte.
