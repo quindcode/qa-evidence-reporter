@@ -1292,3 +1292,44 @@ Test de regresión en `app.test.ts`: genera el reporte, verifica notas
 sobre la MISMA URL, y confirma que el HTML servido tiene la versión nueva
 Y el header `Cache-Control: no-store` — ejercita el bug reportado
 exactamente como ocurrió (a nivel HTTP, no solo generación de archivos).
+
+### Post-fase 6 — bugfix real: evidencia "huérfana" reaparecía en el runner tras cerrar/re-crear una sesión
+
+Reportado por el mismo usuario, inmediatamente después del fix de caché de
+arriba (que no resolvía esto — eran dos bugs distintos coincidiendo en el
+tiempo). Al cerrar una sesión y volver a seleccionar la MISMA feature, el
+runner mostraba evidencia "residual" en steps que la sesión nueva nunca
+había tocado; y al generar el reporte, ese residuo NO aparecía (el reporte
+mostraba menos evidencia de la que el runner sugería que había).
+
+**Diagnóstico** (verificado leyendo el código real, tras descartar con un
+repro aislado que la generación de reportes tuviera un bug — no lo tenía):
+`GET /api/session/step/:stepId/evidence` (el endpoint que alimenta la
+preview de evidencia en vivo del runner, `EvidenceArea.tsx`) devolvía
+`services.evidenceStore.list(stepId)` **tal cual, sin filtrar**.
+`EvidenceStore.list()` reconstruye evidencia ESCANEANDO EL FILESYSTEM (ver
+su JSDoc en `core/types/evidence.ts` — diseño deliberado de fase 2, para
+poder recuperar metadata si `session.json` se corrompiera). Como
+`SessionEngine.close()` (ver el bugfix anterior) NUNCA borra los archivos
+físicos, y los `stepId` son determinísticos (misma feature re-seleccionada
+= mismos nombres de carpeta), una sesión nueva reutiliza exactamente las
+mismas carpetas de evidencia que la sesión anterior — y este endpoint las
+mostraba como si ya estuvieran adjuntas, aunque `step.evidenceFileIds` (la
+sesión real) estuviera vacío.
+
+`core/report/reportGenerator.ts` (`buildEvidenceViews`) YA filtraba
+correctamente por `step.evidenceFileIds` desde que existe — este endpoint
+de la API era el ÚNICO lugar con la inconsistencia, y es justo el que
+determina qué ve el QA mientras ejecuta. Corrección: el mismo patrón de
+filtrado (`Map` por id + filtrar por `step.evidenceFileIds`), para que el
+runner muestre EXACTAMENTE lo que el reporte va a incluir. Test de
+regresión: cerrar sesión con evidencia adjunta, re-seleccionar la misma
+feature, confirmar que `GET .../evidence` del mismo `stepId` devuelve
+`[]` a pesar de que el archivo físico sigue en disco.
+
+**No resuelto a propósito** (fuera de alcance de este fix, documentado):
+los archivos huérfanos siguen ocupando espacio en `evidence/` — `close()`
+deliberadamente no los borra (ver su JSDoc). Con este fix ya no se
+MUESTRAN ni se INCLUYEN en ningún reporte, que era el problema real
+reportado; limpiar el disco es un problema distinto (cosmético/espacio),
+no de corrección funcional.

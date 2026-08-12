@@ -176,9 +176,28 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
     asyncHandler(async (req, res) => {
       const session = await requireSession(context, services);
       const stepId = requireStringParam(req.params.stepId, 'stepId');
-      findStepContext(session, stepId); // lanza InvalidStepTransitionError si el step no existe.
+      const { step } = findStepContext(session, stepId); // lanza InvalidStepTransitionError si el step no existe.
 
-      const evidenceFiles = await services.evidenceStore.list(stepId);
+      // Bug real reportado por un usuario: `EvidenceStore.list(stepId)`
+      // escanea el filesystem completo (ver su JSDoc en
+      // `core/types/evidence.ts`) — NO sabe nada de `session.json`. Devolver
+      // ese resultado tal cual, sin filtrar, significa que archivos
+      // "huérfanos" de una sesión ANTERIOR (mismo `stepId` determinístico:
+      // misma feature re-seleccionada tras `close()`/`?force=true`, ver
+      // `SessionEngine.close()`) aparecían como si ya estuvieran adjuntos a
+      // la sesión ACTUAL, aunque `step.evidenceFileIds` no los referenciara.
+      // `core/report/reportGenerator.ts` (`buildEvidenceViews`) YA hacía
+      // este filtro correctamente — este endpoint es el único lugar que le
+      // faltaba, y es justo el que alimenta la vista previa en vivo del
+      // runner. Filtrar acá por `step.evidenceFileIds` (la fuente de verdad
+      // real) hace que el runner muestre EXACTAMENTE lo que el reporte va a
+      // incluir, ni más ni menos.
+      const evidenceById = new Map(
+        (await services.evidenceStore.list(stepId)).map((file) => [file.id, file]),
+      );
+      const evidenceFiles = step.evidenceFileIds
+        .map((id) => evidenceById.get(id))
+        .filter((file) => file !== undefined);
       res.json({ evidenceFiles });
     }),
   );

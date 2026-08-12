@@ -361,6 +361,42 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(evidenceFile.sizeBytes).toBe(pngBuffer.length);
   });
 
+  it('GET evidencia NO muestra archivos "huérfanos" de una sesión anterior cerrada y re-creada', async () => {
+    // Bug real reportado por un usuario: cerrar una sesión y volver a
+    // seleccionar la MISMA feature reproduce los mismos stepId
+    // determinísticos (ver `core/session/ids.ts`) — si el step ya tenía
+    // evidencia física en disco de la sesión anterior (nunca se borra, ver
+    // `SessionEngine.close()`), `EvidenceStore.list()` la encuentra igual,
+    // aunque la sesión NUEVA no la referencie en absoluto. Este endpoint
+    // debe filtrar por `step.evidenceFileIds` (la fuente de verdad real),
+    // igual que ya hace `reportGenerator.ts` — antes de este fix, no lo
+    // hacía, y la evidencia vieja "reaparecía" en el runner.
+    const app = createApp(await buildContext(projectRoot));
+
+    const firstSelect = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = firstSelect.body.currentStep.step.id;
+
+    await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', await makePngBuffer(), 'vieja.png')
+      .expect(201);
+
+    await request(app).post('/api/session/close').expect(200);
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+
+    // Mismo stepId (misma feature, misma posición) — el archivo físico
+    // "vieja.png" del paso anterior sigue en disco, pero la sesión nueva
+    // no lo referencia.
+    const listResponse = await request(app).get(`/api/session/step/${stepId}/evidence`).expect(200);
+    expect(listResponse.body.evidenceFiles).toEqual([]);
+  });
+
   it('GET evidencia de un stepId inexistente -> 400 INVALID_STEP_TRANSITION', async () => {
     const app = createApp(await buildContext(projectRoot));
 
