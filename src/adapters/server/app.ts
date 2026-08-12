@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import express, { type Express } from 'express';
+import express, { type Express, type Response } from 'express';
 
 import { createEvidenceStore } from '../../core/evidence/index.js';
 import { createGherkinParser } from '../../core/parser/index.js';
@@ -54,8 +54,31 @@ export function createApp(context: ServerContext): Express {
   // todavía en un proyecto recién inicializado sin sesión/reporte; eso no es
   // un problema para `express.static`, que simplemente responde 404 a
   // cualquier ruta bajo un prefijo cuyo directorio (o archivo) no exista.
-  app.use(EVIDENCE_STATIC_PREFIX, express.static(context.evidenceBaseDir));
-  app.use(REPORTS_STATIC_PREFIX, express.static(context.reportsDir));
+  //
+  // `NO_CACHE_STATIC_OPTIONS` (bug real reportado por un usuario, ver
+  // ARCHITECTURE.md "Cambios registrados"): por default, `express.static`
+  // manda `Cache-Control: public, max-age=0` + `ETag`/`Last-Modified` — en
+  // teoría exige revalidar antes de reusar una copia cacheada, pero en la
+  // práctica el navegador del usuario seguía mostrando una versión vieja
+  // del reporte (HTML Y evidencia) después de regenerarlo, con el MISMO
+  // nombre de archivo cada vez (`reports/index.html`,
+  // `evidence/.../captura.png` sobrescrito). Se verificó primero que el
+  // archivo en disco SÍ se regeneraba correctamente (contenido nuevo, no
+  // era un bug de `ReportGenerator`) antes de asumir que era caché del
+  // navegador. `Cache-Control: no-store` es la directiva más fuerte
+  // posible: el navegador nunca debe guardar ninguna parte de la
+  // respuesta, eliminando esta clase de bug de raíz — el costo de
+  // performance es irrelevante acá (una sola persona, uso local,
+  // navegando manualmente un reporte/evidencia que cambia todo el tiempo).
+  const NO_CACHE_STATIC_OPTIONS = {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res: Response) => {
+      res.setHeader('Cache-Control', 'no-store');
+    },
+  };
+  app.use(EVIDENCE_STATIC_PREFIX, express.static(context.evidenceBaseDir, NO_CACHE_STATIC_OPTIONS));
+  app.use(REPORTS_STATIC_PREFIX, express.static(context.reportsDir, NO_CACHE_STATIC_OPTIONS));
 
   // SPA (`src/ui/`, fase 5b): si el build ya existe, se sirve como
   // estáticos + fallback de `index.html` para cualquier ruta no-API (rutas

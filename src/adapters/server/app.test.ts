@@ -262,8 +262,10 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(generateResponse.body.reportUrl).toBe('/reports-static/index.html');
     expect(existsSync(join(context.reportsDir, 'index.html'))).toBe(true);
 
-    // El reporte también debe poder previsualizarse vía el estático montado.
-    await request(app).get('/reports-static/index.html').expect(200);
+    // El reporte también debe poder previsualizarse vía el estático montado,
+    // y NUNCA cacheado (ver regresión dedicada más abajo).
+    const previewResponse = await request(app).get('/reports-static/index.html').expect(200);
+    expect(previewResponse.headers['cache-control']).toBe('no-store');
 
     // 9. Exportar el ZIP: verificar que el buffer es un ZIP válido (firma "PK").
     const zipResponse = await request(app)
@@ -600,5 +602,50 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     const response = await request(app).get('/api/report/export-zip').expect(404);
 
     expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
+  });
+
+  it('regenerar el reporte sobre la MISMA URL refleja notas/evidencia nuevas, sin caché de por medio', async () => {
+    // Regresión real: un usuario reportó que, tras generar el reporte,
+    // volver a la sesión, agregar evidencia/notas, y regenerar, "Ver
+    // reporte" seguía mostrando la versión vieja. Se confirmó que el
+    // archivo en disco SÍ se regeneraba bien (no era un bug de
+    // ReportGenerator) — el problema era que `express.static` permitía
+    // que el navegador cacheara `/reports-static/index.html`. Este test
+    // ejercita exactamente el flujo reportado a nivel HTTP: generar,
+    // cambiar notas, regenerar, pedir la MISMA URL de nuevo sin ningún
+    // header de cache condicional propio (como haría un navegador con
+    // Cache-Control: no-store) y confirmar que el contenido es el nuevo.
+    const app = createApp(await buildContext(projectRoot));
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    await request(app)
+      .post(`/api/session/step/${stepId}/result`)
+      .send({ result: 'pass', notes: 'version UNO' })
+      .expect(200);
+    await request(app).post('/api/report/generate').expect(201);
+
+    const firstView = await request(app)
+      .get('/reports-static/features/f0-inicio-de-sesion.html')
+      .expect(200);
+    expect(firstView.text).toContain('version UNO');
+    expect(firstView.text).not.toContain('version DOS');
+
+    await request(app)
+      .post(`/api/session/step/${stepId}/result`)
+      .send({ result: 'pass', notes: 'version DOS' })
+      .expect(200);
+    await request(app).post('/api/report/generate').expect(201);
+
+    const secondView = await request(app)
+      .get('/reports-static/features/f0-inicio-de-sesion.html')
+      .expect(200);
+    expect(secondView.headers['cache-control']).toBe('no-store');
+    expect(secondView.text).toContain('version DOS');
+    expect(secondView.text).not.toContain('version UNO');
   });
 });

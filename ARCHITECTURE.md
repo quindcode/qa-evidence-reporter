@@ -1256,3 +1256,39 @@ sesión") necesita auditarse contra TODOS los callers reales de ese
 endpoint, no solo contra los tests existentes — el frontend nunca se
 revisó al aplicar el fix original, y eso es lo que dejó al usuario
 bloqueado en producción (su propio proyecto) inmediatamente después.
+
+### Post-fase 6 — bugfix real: el reporte "quemado" con la primera versión (caché del navegador)
+
+Reportado por un usuario real: generó un reporte, volvió a la sesión,
+agregó evidencia y notas nuevas, volvió a generar — "Ver reporte" seguía
+mostrando la versión vieja, ni el texto ni la evidencia se actualizaban.
+
+**Diagnóstico, verificado antes de tocar código** (no asumido): se
+reprodujo el flujo completo contra un proyecto de prueba real, comparando
+el CONTENIDO EN DISCO de `reports/` antes/después de regenerar (sin
+navegador de por medio). El archivo en disco SIEMPRE reflejaba la
+información nueva correctamente — `ReportGenerator` no tenía ningún bug.
+El problema era 100% del lado del navegador: `GET /reports-static/...`
+(`express.static(context.reportsDir)`, sin opciones) manda por default
+`Cache-Control: public, max-age=0` + `ETag`/`Last-Modified` — en teoría
+exige revalidar, pero en la práctica el navegador del usuario seguía
+sirviendo una copia cacheada de `index.html`/`features/*.html` (mismo
+nombre de archivo en cada regeneración) sin ir a la red.
+
+**Corrección**: `app.ts` monta `EVIDENCE_STATIC_PREFIX` y
+`REPORTS_STATIC_PREFIX` con `Cache-Control: no-store` explícito
+(`etag`/`lastModified` desactivados también, para no dejar ningún
+mecanismo de revalidación que un navegador pueda interpretar distinto) —
+la directiva más fuerte posible: nunca guardar nada de la respuesta. Se
+aplicó a AMBOS prefijos (no solo `reports-static`) porque el mismo patrón
+de "sobrescribir un archivo con el mismo nombre" aplica a la evidencia
+mostrada en vivo en el runner (re-subir con el mismo nombre a un step).
+El costo de deshabilitar cache por completo es irrelevante acá: una sola
+persona, uso local, contenido que cambia todo el tiempo — no hay ningún
+escenario real donde cachear esto ayude.
+
+Test de regresión en `app.test.ts`: genera el reporte, verifica notas
+"versión UNO", cambia el resultado con notas "versión DOS", regenera
+sobre la MISMA URL, y confirma que el HTML servido tiene la versión nueva
+Y el header `Cache-Control: no-store` — ejercita el bug reportado
+exactamente como ocurrió (a nivel HTTP, no solo generación de archivos).
