@@ -1386,3 +1386,42 @@ explícito — sin eso, un doble clic en Linux/macOS tampoco los ejecuta.
 terminal, sin reemplazarlo (la terminal sigue funcionando igual que
 siempre). Tests en `init.test.ts` (contenido de los tres archivos + modo
 de archivo `0o755` de `run.sh`/`run.command`).
+
+### Post-fase 6 — corrección real: `run.sh` no se ejecutaba con doble clic en Linux (se abría como texto)
+
+Reportado por el mismo usuario, probando el evolutivo anterior en Ubuntu:
+doble clic en `run.sh` abrió un editor de texto (Bloc de notas/gedit) en
+vez de correr el script, a pesar del `chmod 0o755` ya aplicado.
+
+**Causa real**: el bit de ejecución es NECESARIO pero no SUFICIENTE.
+Nautilus/GNOME Files (default en Ubuntu y la mayoría de distros modernas)
+trata los "archivos de texto ejecutables" como texto por preferencia
+propia del gestor de archivos — el doble clic los abre para editar, no los
+corre, sin importar los permisos del archivo. La suposición original
+("en Linux la convención es `.sh`", fase anterior) confundía la convención
+de invocación por TERMINAL (`./run.sh`, donde el bit de ejecución sí es lo
+único que importa) con el comportamiento de doble clic desde un gestor de
+archivos gráfico, que son dos cosas distintas.
+
+**Corrección**: se agregó `run.desktop`, el mecanismo real de "acceso
+directo ejecutable" en Linux (especificación *Desktop Entry* de
+freedesktop.org, reconocida por GNOME/KDE/XFCE/Cinnamon/MATE) —
+`Exec=bash "<ruta absoluta a run.sh>"`, `Terminal=true` (para que un error
+de arranque quede visible, mismo criterio que el `pause` de `run.bat`).
+La ruta a `run.sh` va ABSOLUTA (`resolve(runScriptShPath)`, resuelta en el
+momento de `init`, cuando `cwd` es conocido) en vez de usar campos de
+sustitución del formato (`%k`, etc.): esos campos están deprecados o se
+soportan de forma inconsistente entre gestores de archivos, y la ruta
+absoluta no tiene ese problema porque no depende de desde dónde se lanzó
+el `.desktop`. `run.desktop` también necesita el bit de ejecución
+(`chmod 0o755`) para que Nautilus lo reconozca como aplicación lanzable en
+vez de, otra vez, como texto plano — mismo requisito, ahora aplicado
+correctamente al archivo que sí lo necesita.
+
+Se documentó explícitamente en `printNextSteps` (`init.ts`) y en el README
+que en Linux corresponde usar `run.desktop`, no `run.sh` — `run.sh` se
+conserva (referenciado por `run.desktop` y por `run.command`, y sigue
+sirviendo para quien prefiera `./run.sh` desde una terminal), pero deja de
+promocionarse como el lanzador de doble clic recomendado en Linux. Test
+nuevo en `init.test.ts` (contenido de `run.desktop`, ruta absoluta correcta
+a `run.sh`, y modo de archivo `0o755`).
