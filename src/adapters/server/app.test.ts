@@ -558,6 +558,34 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
       .expect(201);
   });
 
+  it('POST /api/session/close cierra la sesión: después, select ya no exige ?force=true', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+    await request(app)
+      .post(`/api/session/step/${stepId}/result`)
+      .send({ result: 'pass' })
+      .expect(200);
+
+    await request(app).post('/api/session/close').expect(200);
+
+    // Sin close(), esto daría 409 (hay progreso: el step marcado "pass").
+    await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+  });
+
+  it('POST /api/session/close es no-op (200, no lanza) si no hay ninguna sesión', async () => {
+    const app = createApp(await buildContext(projectRoot));
+
+    await request(app).post('/api/session/close').expect(200);
+  });
+
   it('POST /api/report/generate sin sesión guardada -> 404 NOTHING_TO_REPORT', async () => {
     const app = createApp(await buildContext(projectRoot));
 

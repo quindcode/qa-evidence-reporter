@@ -254,6 +254,19 @@ body {
   color: var(--warning);
 }
 
+/* "Cerrar sesión" (ver Runner.tsx) — outline sutil, no filled: es una
+   acción deliberada pero no destructiva por sí sola (no borra evidencia),
+   así que no debe competir visualmente con --primary/--cta. */
+.button--danger-outline {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
+}
+
+.button--danger-outline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
 .theme-toggle {
   padding: 0.4rem 0.75rem;
   border-radius: 999px;

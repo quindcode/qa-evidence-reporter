@@ -169,6 +169,12 @@ servidor sigue disponible igual por URL, solo se avisa por log). Desde ahí:
 3. El progreso se autoguarda en `.qa-evidence-reporter/session.json` en cada
    acción — se puede cerrar la terminal/navegador y retomar exactamente donde
    quedó volviendo a correr `run`.
+4. Al terminar (o en cualquier corte), generás el reporte y lo exportás
+   como `.zip` desde el panel de "Reporte". Cuando ya no necesitás seguir
+   viendo esa sesión, el botón **"Cerrar sesión"** (al lado de "Exportar
+   como ZIP") la da por terminada — para empezar una selección nueva sin
+   que el sistema te pida confirmar que descartás progreso (ver "Qué NO
+   hacer" más abajo). No borra evidencia ni reportes ya generados.
 
 El proceso queda corriendo en primer plano hasta que lo interrumpís con
 `Ctrl+C` (`SIGINT`) — cierra el servidor de forma prolija antes de terminar.

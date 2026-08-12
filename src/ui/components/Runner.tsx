@@ -16,6 +16,8 @@ export interface RunnerProps {
   currentStep: CurrentStepInfo | null;
   onSessionUpdate: (session: SessionState, currentStep: CurrentStepInfo | null) => void;
   onError: (error: ApiRequestError) => void;
+  /** Llamado después de `POST /api/session/close` exitoso — el caller (`App.tsx`) vuelve a la pantalla de selección. */
+  onSessionClosed: () => void;
 }
 
 const STEP_KEYWORD_LABEL: Record<string, string> = {
@@ -34,6 +36,7 @@ export function Runner({
   currentStep,
   onSessionUpdate,
   onError,
+  onSessionClosed,
 }: RunnerProps): JSX.Element {
   const [evidenceFiles, setEvidenceFiles] = useState<EvidenceFile[]>([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
@@ -185,6 +188,37 @@ export function Runner({
     }
   }
 
+  /**
+   * "Cerrar sesión" — agregado tras un incidente real (ver ARCHITECTURE.md,
+   * "Cambios registrados"): una vez que el server exige `?force=true` para
+   * descartar una sesión con progreso registrado (sin importar `status`),
+   * un QA que ya generó/exportó su reporte necesita una forma EXPLÍCITA de
+   * decir "terminé con esto" para poder empezar una selección nueva sin
+   * ese chequeo de por medio. Confirma primero si TODAVÍA no se generó
+   * ningún reporte en esta sesión (`reportUrl` sigue `null`) — si ya se
+   * generó, cerrar es sencillamente "prolijo", no arriesga nada.
+   */
+  async function handleCloseSession(): Promise<void> {
+    if (!reportUrl) {
+      const confirmed = window.confirm(
+        'Todavía no generaste el reporte de esta sesión. Cerrarla ahora no borra la evidencia ' +
+          'ya adjuntada (queda en disco), pero perdés la posibilidad de retomarla o de generar ' +
+          'un reporte con sus resultados. ¿Cerrar igual?',
+      );
+      if (!confirmed) return;
+    }
+
+    setBusy(true);
+    try {
+      await api.closeSession();
+      onSessionClosed();
+    } catch (error) {
+      onError(error as ApiRequestError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   useKeyboardShortcuts(
     {
       onPass: () => void handleSubmitResult('pass'),
@@ -301,6 +335,14 @@ export function Runner({
                 </a>
               </>
             )}
+            <button
+              type="button"
+              class="button button--danger-outline"
+              onClick={() => void handleCloseSession()}
+              disabled={busy}
+            >
+              Cerrar sesión
+            </button>
           </div>
         </section>
       </div>

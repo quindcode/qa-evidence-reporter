@@ -283,6 +283,24 @@ export interface SessionEngine {
 
   /** Reemplaza la nota libre del step. */
   addNotes(stepId: string, notes: string): Promise<SessionState>;
+
+  /**
+   * Cierra la sesión actual: borra `session.json` del disco (no-op si no
+   * existe) y limpia el estado en memoria — después de `close()`,
+   * `getState()`/`getCurrentStep()` vuelven a lanzar `SessionNotFoundError`
+   * como si nunca se hubiera creado ninguna sesión, y `createSession()`
+   * puede volver a llamarse sin `?force=true` desde el caller (ver
+   * `routes/session.ts`, `sessionHasRecordedProgress`).
+   *
+   * Decisión de diseño (NO borra evidencia ni reportes): `close()` solo
+   * afecta el tracking de la sesión en sí. Los archivos físicos en
+   * `evidence/` y cualquier reporte ya generado en `reports/` quedan
+   * intactos — mismo criterio que ya aplica al re-seleccionar features con
+   * `?force=true` (nunca se borra evidencia física, ver
+   * `core/evidence/evidenceStore.ts`). Si el QA quiere limpiar esos
+   * archivos, lo hace a mano.
+   */
+  close(): Promise<void>;
 }
 
 /**

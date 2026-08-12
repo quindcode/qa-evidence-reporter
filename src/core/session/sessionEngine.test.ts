@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -366,6 +367,40 @@ describe('createSessionEngine', () => {
       const onDisk = JSON.parse(raw);
       expect(onDisk.projectName).toBe('P');
       expect(onDisk.status).toBe('in_progress');
+    });
+  });
+
+  describe('close', () => {
+    it('borra session.json del disco y limpia el estado en memoria', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+
+      await engine.close();
+
+      expect(existsSync(sessionFilePath)).toBe(false);
+      expect(() => engine.getState()).toThrow(SessionNotFoundError);
+    });
+
+    it('después de close(), createSession() puede volver a llamarse sin problema', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      await engine.close();
+
+      const recreated = await engine.createSession(makeFeatures(), 'Otro proyecto');
+      expect(recreated.projectName).toBe('Otro proyecto');
+    });
+
+    it('es no-op (no lanza) si se llama sin haber creado/cargado ninguna sesión', async () => {
+      const engine = createSessionEngine(sessionFilePath);
+      await expect(engine.close()).resolves.toBeUndefined();
+    });
+
+    it('es no-op (no lanza) si se llama dos veces seguidas', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+
+      await engine.close();
+      await expect(engine.close()).resolves.toBeUndefined();
     });
   });
 });

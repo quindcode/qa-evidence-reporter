@@ -102,4 +102,85 @@ describe('FeatureSelect', () => {
     fireEvent.click(screen.getByRole('button', { name: /continuar sesión/i }));
     expect(onContinue).toHaveBeenCalledTimes(1);
   });
+
+  it('sesión "completed": muestra un botón real para verla/generar su reporte (no solo un aviso)', () => {
+    // Regresión: antes, una sesión completada solo mostraba texto sin
+    // ninguna acción — el QA quedaba sin forma de llegar al runner para
+    // generar/exportar su reporte. Ver ARCHITECTURE.md, "Cambios
+    // registrados", incidente real de sesión bloqueada.
+    const onContinue = vi.fn();
+    const sessionSummary: SessionSummary = {
+      exists: true,
+      status: 'completed',
+      projectName: 'Demo',
+    };
+    render(
+      <FeatureSelect
+        features={FEATURES}
+        sessionSummary={sessionSummary}
+        busy={false}
+        onStart={vi.fn()}
+        onContinue={onContinue}
+      />,
+    );
+
+    expect(screen.getByText(/ya se completó/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /ver sesión.*generar reporte/i }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('iniciar ejecución sobre una sesión "completed" existente confirma y reintenta con force=true', () => {
+    // Regresión: `handleStart` solo pasaba `force=true` para sesiones
+    // `in_progress` — para una `completed` con progreso real, el server
+    // rechaza con 409 (`sessionHasRecordedProgress`, ver `routes/session.ts`)
+    // y sin este `force=true` el QA queda sin forma de continuar.
+    const onStart = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const sessionSummary: SessionSummary = {
+      exists: true,
+      status: 'completed',
+      projectName: 'Demo',
+    };
+    render(
+      <FeatureSelect
+        features={FEATURES}
+        sessionSummary={sessionSummary}
+        busy={false}
+        onStart={onStart}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getByRole('button', { name: /iniciar ejecución/i }));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(onStart).toHaveBeenCalledWith(['login.feature'], true);
+    confirmSpy.mockRestore();
+  });
+
+  it('iniciar ejecución sobre una sesión existente: si se cancela la confirmación, no llama a onStart', () => {
+    const onStart = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const sessionSummary: SessionSummary = {
+      exists: true,
+      status: 'completed',
+      projectName: 'Demo',
+    };
+    render(
+      <FeatureSelect
+        features={FEATURES}
+        sessionSummary={sessionSummary}
+        busy={false}
+        onStart={onStart}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getByRole('button', { name: /iniciar ejecución/i }));
+
+    expect(onStart).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
 });

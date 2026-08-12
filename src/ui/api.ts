@@ -183,6 +183,10 @@ export const api = {
   generateReport(): Promise<ReportGenerateResponse> {
     return request<ReportGenerateResponse>('/api/report/generate', { method: 'POST' });
   },
+
+  closeSession(): Promise<{ closed: true }> {
+    return request<{ closed: true }>('/api/session/close', { method: 'POST' });
+  },
 };
 
 /** `GET /api/report/export-zip` no se llama con `fetch`: es una descarga de archivo real (ver `ExportZipButton`). */

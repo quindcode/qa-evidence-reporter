@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { InvalidStepTransitionError, SessionNotFoundError } from '../types/errors.js';
@@ -216,6 +216,11 @@ export function createSessionEngine(
     return current;
   }
 
+  async function close(): Promise<void> {
+    await rm(sessionFilePath, { force: true });
+    state = undefined;
+  }
+
   async function persist(): Promise<void> {
     const current = requireState();
     await mkdir(dirname(sessionFilePath), { recursive: true });
@@ -244,6 +249,7 @@ export function createSessionEngine(
     addEvidence,
     removeEvidence,
     addNotes,
+    close,
   };
 }
 

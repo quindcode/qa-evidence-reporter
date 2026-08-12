@@ -20,10 +20,24 @@ const SESSION_STATUS_LABELS: Record<string, string> = {
 
 /**
  * Pantalla de selección de features (`GET /api/features` ya resuelto por el
- * caller). Si ya hay una sesión sin completar, ofrece continuarla en vez de
- * forzar una selección nueva (ver ARCHITECTURE.md, "UX del runner", y la
- * consigna de esta fase: "Si ya hay una sesión existente sin completar...
- * ofrece continuarla").
+ * caller). Si ya hay una sesión (sin completar O completada), ofrece
+ * continuarla en vez de forzar una selección nueva (ver ARCHITECTURE.md,
+ * "UX del runner").
+ *
+ * Decisión de diseño (`onContinue` también para sesiones `'completed'`,
+ * corregido tras un incidente real — ver ARCHITECTURE.md "Cambios
+ * registrados"): antes, una sesión completada solo mostraba un aviso SIN
+ * ninguna acción real ("podés revisar su reporte" sin ningún botón para
+ * hacerlo), y "Iniciar ejecución" nunca reintentaba con `?force=true` para
+ * ese caso — como el server exige esa confirmación apenas hay progreso
+ * real registrado (sin importar `status`), esto dejaba al QA totalmente
+ * bloqueado: no podía ni seguir viendo su sesión completada (para generar/
+ * exportar el reporte) ni empezar una nueva. Ahora CUALQUIER sesión
+ * existente (con progreso o no, completada o no) ofrece "Continuar
+ * sesión" para entrar al runner (donde están los botones de reporte y
+ * "Cerrar sesión", ver `Runner.tsx`), y el flujo de "Iniciar ejecución"
+ * confirma y reintenta con `force=true` para cualquier sesión existente,
+ * no solo las sin terminar.
  */
 export function FeatureSelect({
   features,
@@ -34,8 +48,9 @@ export function FeatureSelect({
 }: FeatureSelectProps): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const hasUnfinishedSession = sessionSummary.exists && sessionSummary.status !== 'completed';
-  const hasCompletedSession = sessionSummary.exists && sessionSummary.status === 'completed';
+  const hasExistingSession = sessionSummary.exists;
+  const isUnfinishedSession = sessionSummary.exists && sessionSummary.status !== 'completed';
+  const isCompletedSession = sessionSummary.exists && sessionSummary.status === 'completed';
 
   const allSelected = useMemo(
     () => features.length > 0 && selected.size === features.length,
@@ -57,22 +72,30 @@ export function FeatureSelect({
 
   function handleStart(): void {
     if (selected.size === 0) return;
-    // Reseleccionar sobre una sesión sin completar requiere `force=true` (ver
-    // `POST /api/session/select`, 409 SESSION_ALREADY_IN_PROGRESS si no se
-    // pasa). Se confirma explícitamente para no perder progreso sin querer.
-    if (hasUnfinishedSession) {
+    // Reseleccionar sobre CUALQUIER sesión existente (completada o no)
+    // requiere `force=true` si tiene progreso real registrado (ver
+    // `POST /api/session/select`, 409 SESSION_ALREADY_IN_PROGRESS —
+    // `routes/session.ts`, `sessionHasRecordedProgress`). Se confirma acá
+    // de todas formas para cualquier sesión existente: el servidor es la
+    // fuente de verdad real de si había algo que perder, pero no tiene
+    // sentido pasar `force=true` a ciegas sin avisar primero.
+    if (hasExistingSession) {
       const confirmed = window.confirm(
-        'Ya hay una sesión en curso sin completar. Iniciar una nueva selección descarta ' +
-          'su progreso (evidencia y resultados no exportados a un reporte). ¿Continuar igual?',
+        isCompletedSession
+          ? 'La última sesión ya se completó. Iniciar una nueva selección descarta su progreso ' +
+              '(evidencia, resultados y notas) si todavía no generaste/exportaste su reporte. ' +
+              '¿Continuar igual?'
+          : 'Ya hay una sesión en curso sin completar. Iniciar una nueva selección descarta ' +
+              'su progreso (evidencia y resultados no exportados a un reporte). ¿Continuar igual?',
       );
       if (!confirmed) return;
     }
-    onStart(Array.from(selected), hasUnfinishedSession);
+    onStart(Array.from(selected), hasExistingSession);
   }
 
   return (
     <div class="feature-select">
-      {hasUnfinishedSession && (
+      {isUnfinishedSession && (
         <div class="session-banner" role="status">
           <p>
             Hay una sesión {SESSION_STATUS_LABELS[sessionSummary.status] ?? sessionSummary.status}{' '}
@@ -84,13 +107,16 @@ export function FeatureSelect({
           </button>
         </div>
       )}
-      {hasCompletedSession && (
+      {isCompletedSession && (
         <div class="session-banner session-banner--info" role="status">
           <p>
             La última sesión de{' '}
             <strong>{sessionSummary.exists ? sessionSummary.projectName : ''}</strong> ya se
-            completó. Podés revisar su reporte o iniciar una nueva selección abajo.
+            completó.
           </p>
+          <button type="button" class="button button--primary" onClick={onContinue} disabled={busy}>
+            Ver sesión / generar reporte
+          </button>
         </div>
       )}
 

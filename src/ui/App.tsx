@@ -133,6 +133,19 @@ export function App(): JSX.Element {
     setCurrentStep(nextCurrentStep);
   }
 
+  /**
+   * Tras "Cerrar sesión" (`Runner.tsx` -> `POST /api/session/close`): vuelve
+   * a la pantalla de selección, recargando `GET /api/features` para que
+   * `sessionSummary` refleje que ya no hay ninguna sesión (`exists: false`)
+   * — sin este reload, la pantalla de selección seguiría mostrando el
+   * banner de la sesión recién cerrada hasta el próximo refresh manual.
+   */
+  function handleSessionClosed(): void {
+    setSession(null);
+    setCurrentStep(null);
+    void loadFeatures();
+  }
+
   return (
     <div class="app">
       <header class={`app-header${isBranded ? ' app-header--branded' : ''}`}>
@@ -169,6 +182,7 @@ export function App(): JSX.Element {
             currentStep={currentStep}
             onSessionUpdate={handleSessionUpdate}
             onError={setError}
+            onSessionClosed={handleSessionClosed}
           />
         )}
       </main>

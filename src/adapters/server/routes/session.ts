@@ -321,6 +321,31 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
     }),
   );
 
+  /**
+   * `POST /api/session/close` — cierra la sesión actual (ver
+   * `SessionEngine.close()`): borra `session.json` y limpia el estado en
+   * memoria, sin tocar evidencia ni reportes ya generados.
+   *
+   * Agregado tras un incidente real (ver ARCHITECTURE.md, "Cambios
+   * registrados"): al exigirse `?force=true` para descartar una sesión con
+   * progreso real (arriba, `sessionHasRecordedProgress`), un QA que
+   * termina y exporta su reporte necesita una forma EXPLÍCITA de decir
+   * "ya terminé con esto, quiero empezar de cero" sin toparse con ese
+   * chequeo — es la acción que la UI ofrece como botón "Cerrar sesión"
+   * (ver `Runner.tsx`), típicamente después de exportar el ZIP.
+   *
+   * No requiere que haya una sesión existente (no-op si no la hay, ver
+   * `SessionEngine.close()`) — no tiene sentido que "cerrar algo que ya
+   * está cerrado" sea un error.
+   */
+  router.post(
+    '/session/close',
+    asyncHandler(async (_req, res) => {
+      await services.sessionEngine.close();
+      res.status(200).json({ closed: true });
+    }),
+  );
+
   return router;
 }
 

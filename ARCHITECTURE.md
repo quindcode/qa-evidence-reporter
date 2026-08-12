@@ -1210,3 +1210,49 @@ Los archivos de evidencia "huérfanos" de este incidente puntual
 disco bajo las mismas rutas deterministas (`{featureId}/{scenarioId}/{stepId}/`),
 así que son recuperables re-adjuntándolos a mano si el usuario los
 necesita para su reporte.
+
+### Post-fase 6 — segunda parte del incidente anterior: el fix del backend dejó al usuario bloqueado
+
+Consecuencia directa e inmediata del fix de arriba, encontrada por el
+usuario en la práctica apenas se aplicó: `POST /api/session/select` ahora
+exige `?force=true` para cualquier sesión con progreso real (sin importar
+`status`) — correcto del lado del server, pero **el frontend nunca pasaba
+`force=true` para una sesión `'completed'`** (`FeatureSelect.tsx`,
+`handleStart`, solo lo hacía para `status !== 'completed'`), y el banner de
+sesión completada ("podés revisar su reporte") no tenía NINGÚN botón real
+para hacerlo. Resultado: con una sesión completada con progreso, "Iniciar
+ejecución" siempre daba 409 y no había ninguna otra acción disponible — el
+QA quedaba completamente bloqueado, sin poder ni ver su sesión ni empezar
+una nueva.
+
+**Corrección (dos partes):**
+1. `FeatureSelect.tsx`: el banner de sesión `'completed'` ahora tiene un
+   botón real ("Ver sesión / generar reporte") que usa el mismo
+   `onContinue` que ya existía para sesiones `in_progress` — entra al
+   runner en vez de quedar como texto sin acción. `handleStart` unificó su
+   lógica: confirma y pasa `force=true` para CUALQUIER sesión existente
+   (`hasExistingSession`), no solo las `in_progress`.
+2. **`SessionEngine.close()`** (método nuevo, `core/session/sessionEngine.ts`):
+   borra `session.json` del disco y limpia el estado en memoria, sin tocar
+   evidencia ni reportes ya generados — permite que `createSession()`
+   vuelva a llamarse sin que `sessionHasRecordedProgress` tenga nada que
+   evaluar (no hay sesión). Expuesto como `POST /api/session/close`
+   (`routes/session.ts`) y como botón **"Cerrar sesión"** en el panel de
+   reporte del runner (`Runner.tsx`, después de "Generar reporte"/"Ver
+   reporte"/"Exportar como ZIP" — pedido explícito del usuario). Pide
+   confirmación solo si todavía no se generó el reporte de esa sesión
+   (`reportUrl` sigue `null` en el estado del componente); si ya se
+   generó, cerrar es "prolijo" y no arriesga nada.
+3. Tests nuevos en las 3 capas: `sessionEngine.test.ts` (`close()`:
+   borra archivo, limpia estado, no-op sin sesión, no-op llamado dos
+   veces, permite recrear después), `app.test.ts` (`POST /api/session/close`
+   real vía HTTP, incluyendo que habilita un `select` posterior sin 409),
+   `FeatureSelect.test.tsx` y `Runner.test.tsx` (componentes: botón visible
+   y funcional en ambos casos, confirmación respetada).
+
+Lección para el propio proceso de esta sesión: un fix de backend que
+cambia una condición de negocio (acá, "cuándo se permite descartar una
+sesión") necesita auditarse contra TODOS los callers reales de ese
+endpoint, no solo contra los tests existentes — el frontend nunca se
+revisó al aplicar el fix original, y eso es lo que dejó al usuario
+bloqueado en producción (su propio proyecto) inmediatamente después.
