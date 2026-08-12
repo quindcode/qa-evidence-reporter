@@ -1333,3 +1333,56 @@ deliberadamente no los borra (ver su JSDoc). Con este fix ya no se
 MUESTRAN ni se INCLUYEN en ningún reporte, que era el problema real
 reportado; limpiar el disco es un problema distinto (cosmético/espacio),
 no de corrección funcional.
+
+### Post-fase 6 — evolutivo: fallback automático de puerto en `startServer`
+
+Pedido real de un usuario que corre varios proyectos de QA a la vez en la
+misma máquina (cada uno con su propio `qa-config.json`): antes, si
+`config.server.port` ya estaba ocupado (típico con el default `3000`
+repetido entre proyectos), `run` fallaba con un `EADDRINUSE` crudo de Node
+— la única salida era editar `qa-config.json` a mano para asignarle otro
+puerto a cada proyecto, cada vez.
+
+`startServer` (`adapters/server/index.ts`) ahora prueba `port`, `port + 1`,
+`port + 2`, ... hasta `MAX_PORT_ATTEMPTS` (20) antes de rendirse con un
+`QaError` (`PORT_UNAVAILABLE`) — mismo criterio que Vite/Storybook/etc.
+`config.server.port` queda como el puerto de ARRANQUE, no como el puerto
+real garantizado; `startServer` sigue devolviendo (y logueando, y abriendo
+en el navegador vía `open()`) la `url` REAL con el puerto que efectivamente
+consiguió, así que el QA nunca necesita saber ni fijar el puerto a mano
+para poder correr dos proyectos en paralelo. Tests en
+`adapters/server/index.test.ts` (puerto libre sin cambios de
+comportamiento, un puerto ocupado, varios consecutivos ocupados, y los 20
+agotados → `PORT_UNAVAILABLE`).
+
+### Post-fase 6 — evolutivo: lanzadores de doble clic (`run.sh`/`run.command`/`run.bat`)
+
+Mismo usuario, mismo pedido de fondo ("que cualquier persona tenga que
+editar/escribir lo menos posible para correr una sesión"): hoy `run` se
+invoca siempre desde una terminal (`qa-evidence-reporter run`), lo cual es
+fricción real para un QA que no vive en la terminal. Se evaluó y se
+descartó a propósito una integración nativa de "clic derecho sobre un
+`.feature` → Run" al estilo Serenity: eso depende de un test-runner de IDE
+(convención del ecosistema Java, sin equivalente estándar en un CLI de
+Node) y requeriría, según el SO/editor, o bien una extensión de VS Code
+propia (a publicar y mantener, solo cubre VS Code) o bien integración a
+nivel de sistema operativo (registro de Windows, Quick Action de macOS,
+acciones de Nautilus en Linux — tres implementaciones frágiles y difíciles
+de instalar/desinstalar limpiamente). Ninguna de las dos encaja con el
+criterio de "cero config extra" que ya sigue el resto del proyecto (ver,
+por ejemplo, la decisión de fase 1 sobre thumbnails de video).
+
+En su lugar, `init` (`adapters/cli/commands/init.ts`) ahora deja en la raíz
+del proyecto QA tres scripts ejecutables con el mismo comando
+(`qa-evidence-reporter run`, tras `cd` a su propio directorio): `run.sh` y
+`run.bat`, más `run.command` con el mismo contenido que `run.sh` — Finder
+en macOS solo ejecuta con doble clic los archivos `.command` (a un `.sh`
+lo abre en un editor de texto en vez de correrlo). Se generan los tres
+siempre, sin importar el SO donde corrió `init`, porque un proyecto de QA
+suele ser un repo compartido entre un equipo con máquinas distintas.
+`run.sh`/`run.command` quedan con permiso de ejecución (`chmod 0o755`)
+explícito — sin eso, un doble clic en Linux/macOS tampoco los ejecuta.
+`printNextSteps` menciona la opción de doble clic junto al comando de
+terminal, sin reemplazarlo (la terminal sigue funcionando igual que
+siempre). Tests en `init.test.ts` (contenido de los tres archivos + modo
+de archivo `0o755` de `run.sh`/`run.command`).

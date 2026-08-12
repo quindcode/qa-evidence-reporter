@@ -66,6 +66,10 @@ Crea, en el directorio actual:
 - `features/` (con un `.feature` de ejemplo, comentado y editable/borrable)
 - `evidence/` y `reports/` (vacíos)
 - `qa-config.json` (ver formato completo más abajo)
+- `run.sh` / `run.command` / `run.bat`: lanzadores de doble clic (Linux,
+  macOS y Windows respectivamente) que corren `qa-evidence-reporter run` sin
+  necesitar abrir una terminal — útil si quien ejecuta la sesión de QA no
+  está familiarizado con la línea de comandos.
 
 ```bash
 qa-evidence-reporter init --name "Mi Proyecto" # opcional, si no se toma el nombre de la carpeta
@@ -161,7 +165,14 @@ recursivamente) — útil para organizar por módulo o área del proyecto.
 Levanta el server HTTP interactivo (`http://localhost:{puerto}`, configurable
 en `qa-config.json`) y, si `server.openBrowser` es `true`, intenta abrir el
 navegador automáticamente (si falla — p. ej. sin entorno gráfico — el
-servidor sigue disponible igual por URL, solo se avisa por log). Desde ahí:
+servidor sigue disponible igual por URL, solo se avisa por log). Si el
+puerto configurado ya está en uso (por ejemplo, porque hay otro proyecto de
+QA corriendo en paralelo en la misma máquina), prueba automáticamente los
+siguientes puertos hasta encontrar uno libre — nunca hace falta editar
+`qa-config.json` a mano solo para poder correr dos sesiones a la vez; el
+navegador se abre igual, apuntando al puerto real que consiguió. Además del
+comando de terminal, también se puede arrancar con doble clic en
+`run.sh`/`run.command`/`run.bat` (ver `init` más arriba). Desde ahí:
 
 1. Seleccionás qué features correr.
 2. Recorrés cada step, adjuntando evidencia (file picker, drag&drop o

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 
 import {
@@ -34,6 +34,35 @@ Feature: Ejemplo de inicio de sesión
     Given un usuario registrado en la página de inicio de sesión
     When ingresa su usuario y contraseña válidos
     Then accede correctamente a su cuenta
+`;
+
+/**
+ * Lanzadores de doble clic que `init` deja en la raíz del proyecto QA, para
+ * que correr una sesión no requiera abrir una terminal y escribir el
+ * comando a mano. Se generan los tres siempre, independientemente del SO
+ * donde corra `init`, porque un mismo proyecto de QA (un repo compartido)
+ * puede terminar clonado en máquinas con SO distinto entre los miembros del
+ * equipo.
+ *
+ * `run.sh` y `run.command` tienen el mismo contenido (shell script): Finder
+ * en macOS solo ejecuta scripts con doble clic si la extensión es
+ * `.command` (con `.sh` los abre en un editor de texto), mientras que en
+ * Linux la convención es `.sh` — se generan ambos en vez de asumir cuál
+ * corresponde a la máquina donde corrió `init`.
+ */
+const RUN_SCRIPT_SH = `#!/usr/bin/env bash
+# Generado por "qa-evidence-reporter init". Doble clic (o "Abrir con Terminal")
+# para levantar el runner sin escribir el comando a mano.
+cd "$(dirname "$0")"
+qa-evidence-reporter run
+`;
+
+const RUN_SCRIPT_BAT = `@echo off
+REM Generado por "qa-evidence-reporter init". Doble clic para levantar el
+REM runner sin escribir el comando a mano.
+cd /d "%~dp0"
+qa-evidence-reporter run
+pause
 `;
 
 export interface InitCommandOptions {
@@ -113,6 +142,15 @@ export async function runInit(
   await writeFile(join(evidenceDir, '.gitkeep'), '', 'utf-8');
   await writeFile(join(reportsDir, '.gitkeep'), '', 'utf-8');
 
+  const runScriptShPath = join(cwd, 'run.sh');
+  const runScriptCommandPath = join(cwd, 'run.command');
+  const runScriptBatPath = join(cwd, 'run.bat');
+  await writeFile(runScriptShPath, RUN_SCRIPT_SH, 'utf-8');
+  await chmod(runScriptShPath, 0o755);
+  await writeFile(runScriptCommandPath, RUN_SCRIPT_SH, 'utf-8');
+  await chmod(runScriptCommandPath, 0o755);
+  await writeFile(runScriptBatPath, RUN_SCRIPT_BAT, 'utf-8');
+
   await writeFile(configFilePath, buildConfigFileContents(projectName), 'utf-8');
   logger.info('qa-config.json creado', { configFilePath, projectName });
 
@@ -163,7 +201,8 @@ function printNextSteps(
   );
   print('  2. Agregá tus archivos .feature en "features/" (o editá/borrá el ejemplo incluido).');
   print(
-    '  3. Corré "qa-evidence-reporter run" para cargar la configuración y las features del proyecto.',
+    '  3. Corré "qa-evidence-reporter run" (o hacé doble clic en "run.sh"/"run.command" ' +
+      'en Mac/Linux, "run.bat" en Windows) para cargar la configuración y las features del proyecto.',
   );
   print(
     '  4. Ejecutá la sesión de QA manual y corré "qa-evidence-reporter report" para generar el reporte HTML final.',

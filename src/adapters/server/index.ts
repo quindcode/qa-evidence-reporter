@@ -1,9 +1,62 @@
 import type { Server } from 'node:http';
 
+import type { Express } from 'express';
 import open from 'open';
 
+import { QaError } from '../../core/types/errors.js';
 import { createApp } from './app.js';
 import type { ServerContext } from './context.js';
+
+/**
+ * Cuántos puertos consecutivos probar a partir del configurado antes de
+ * rendirse (ver `listenWithPortFallback`). 20 es un margen generoso para el
+ * caso real que motivó esto (varios proyectos de QA corriendo a la vez en
+ * la misma máquina, cada uno con su propio `qa-config.json` — ver
+ * ARCHITECTURE.md, "Cambios registrados") sin ser un rango tan amplio como
+ * para tardar en fallar de verdad si no hay NINGÚN puerto libre.
+ */
+const MAX_PORT_ATTEMPTS = 20;
+
+/**
+ * Intenta `app.listen(port)`, y si el puerto está ocupado (`EADDRINUSE`),
+ * prueba `port + 1`, `port + 2`, ... hasta `MAX_PORT_ATTEMPTS` puertos
+ * consecutivos, antes de rendirse con un `QaError` claro.
+ *
+ * Decisión de diseño (agregado tras feedback real de un usuario): antes,
+ * `config.server.port` ocupado hacía fallar `run` con un `EADDRINUSE`
+ * crudo de Node — obligaba a editar `qa-config.json` a mano cada vez que
+ * dos proyectos coincidían en el mismo puerto default (`3000`). Mismo
+ * criterio que usan Vite/Storybook/etc.: probar el siguiente puerto libre
+ * automáticamente. `startServer` sigue imprimiendo la URL REAL (con el
+ * puerto que terminó usando, no el configurado) — `run.ts` ya lo hace bien
+ * porque usa `result.url`, no `context.config.server.port`.
+ */
+async function listenWithPortFallback(app: Express, startPort: number): Promise<Server> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
+    const candidatePort = startPort + attempt;
+    try {
+      return await new Promise<Server>((resolvePromise, rejectPromise) => {
+        const instance = app.listen(candidatePort);
+        instance.once('listening', () => resolvePromise(instance));
+        instance.once('error', rejectPromise);
+      });
+    } catch (error) {
+      const isPortInUse =
+        error instanceof Error && (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
+      if (!isPortInUse) throw error;
+      lastError = error;
+    }
+  }
+
+  throw new QaError(
+    `No se encontró ningún puerto libre entre ${startPort} y ${startPort + MAX_PORT_ATTEMPTS - 1} ` +
+      `(probá liberar alguno, o cambiar "server.port" en "qa-config.json").`,
+    'PORT_UNAVAILABLE',
+    { cause: lastError },
+  );
+}
 
 export { createApp } from './app.js';
 export { buildServerContext } from './context.js';
@@ -41,12 +94,7 @@ export interface StartServerResult {
  */
 export async function startServer(context: ServerContext): Promise<StartServerResult> {
   const app = createApp(context);
-
-  const server = await new Promise<Server>((resolvePromise, rejectPromise) => {
-    const instance = app.listen(context.config.server.port);
-    instance.once('listening', () => resolvePromise(instance));
-    instance.once('error', rejectPromise);
-  });
+  const server = await listenWithPortFallback(app, context.config.server.port);
 
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : context.config.server.port;

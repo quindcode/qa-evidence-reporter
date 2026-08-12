@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
@@ -69,6 +69,26 @@ describe('runInit', () => {
 
     // Debe haber impreso próximos pasos accionables, no quedar en silencio.
     expect(messages.join('\n')).toMatch(/próximos pasos/i);
+  });
+
+  it('crea lanzadores de doble clic (run.sh, run.command, run.bat) ejecutables con el comando run', async () => {
+    await runInit(cwd, {}, { print: () => {}, logger: noopLogger });
+
+    const shContents = await readFile(join(cwd, 'run.sh'), 'utf-8');
+    const commandContents = await readFile(join(cwd, 'run.command'), 'utf-8');
+    const batContents = await readFile(join(cwd, 'run.bat'), 'utf-8');
+
+    expect(shContents).toContain('qa-evidence-reporter run');
+    expect(commandContents).toContain('qa-evidence-reporter run');
+    expect(batContents).toContain('qa-evidence-reporter run');
+
+    // run.sh y run.command deben quedar con permiso de ejecución (0o755):
+    // sin esto, un doble clic en Linux/macOS no los corre, solo los abre en
+    // un editor de texto.
+    const shMode = (await stat(join(cwd, 'run.sh'))).mode & 0o777;
+    const commandMode = (await stat(join(cwd, 'run.command'))).mode & 0o777;
+    expect(shMode).toBe(0o755);
+    expect(commandMode).toBe(0o755);
   });
 
   it('usa --name para el projectName en vez del nombre de la carpeta', async () => {
