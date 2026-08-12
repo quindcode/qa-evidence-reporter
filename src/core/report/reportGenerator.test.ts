@@ -240,6 +240,23 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     }
   });
 
+  it('los SVG del dashboard (donut y barra de progreso) tienen CSS que los hace responsivos', async () => {
+    // Regresión: charts.ts genera los SVG con width/height fijos en px (ver
+    // su JSDoc). Sin un override de CSS que los deje escalar dentro de su
+    // contenedor, en pantallas angostas la barra de progreso (480px) se sale
+    // del .qa-card del dashboard — bug real reportado por un usuario.
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    expect(indexHtml).toMatch(/\.qa-dashboard-grid\s+svg\s*\{[^}]*max-width:\s*100%/);
+  });
+
   it('copia el ícono genérico de video y otros assets estáticos del template a outputDir/assets/', async () => {
     const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
     const generator = createReportGenerator(

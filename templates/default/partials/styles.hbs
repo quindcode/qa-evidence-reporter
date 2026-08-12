@@ -145,6 +145,17 @@
     align-items: center;
   }
 
+  /* Los SVG del dashboard (donut y barra de progreso, ver core/report/charts.ts)
+     tienen width/height fijos como atributos para que sean válidos "sueltos"
+     (p. ej. si alguien los abre fuera de este template). Acá se los fuerza a
+     escalar dentro de su contenedor usando el viewBox — si no, en pantallas
+     angostas la barra de 480px de ancho se sale del .qa-card. */
+  .qa-dashboard-grid svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
   .qa-legend {
     list-style: none;
     margin: 12px 0 0;
