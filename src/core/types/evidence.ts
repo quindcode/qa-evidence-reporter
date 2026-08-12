@@ -17,11 +17,14 @@ export interface EvidenceFile {
    * `EvidenceFile[]` completos escaneando el filesystem sin necesitar un
    * índice separado (ver JSDoc de `EvidenceStore.list`/`getThumbnail`).
    *
-   * Consecuencia documentada: subir dos veces un archivo con el mismo
-   * `originalFilename` para el mismo step produce el mismo id (y por lo
-   * tanto sobrescribe el primero en disco) — es una simplificación
-   * deliberada para esta fase; deduplicar con sufijos (`-2`, `-3`, ...)
-   * queda para una fase futura si se necesita.
+   * `originalFilename` (y por lo tanto este id) puede NO ser exactamente el
+   * nombre que llegó en el request: `EvidenceStore.save` deduplica
+   * colisiones dentro del mismo step agregando un sufijo (" (1)", " (2)",
+   * ...) ANTES de calcular el id, así que subir/pegar dos archivos con el
+   * mismo nombre para el mismo step los agrega a ambos en vez de que el
+   * segundo pise al primero (ver `resolveNonCollidingFilename` en
+   * `evidenceStore.ts` — motivado por pegar varias imágenes del
+   * portapapeles, que el navegador nombra todas igual, p. ej. `image.png`).
    */
   id: string;
   /** Nombre de archivo tal cual lo subió el QA (sin sanitizar: se preserva para mostrarlo en la UI/reporte). */

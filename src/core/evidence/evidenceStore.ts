@@ -46,21 +46,36 @@ export interface EvidenceStoreDeps {
  * un archivo encontrado en
  * `evidence/{featureId}/{scenarioId}/{stepId}/{nombre}`, su id se puede
  * recalcular con la misma fórmula a partir de esos 4 valores, que son
- * exactamente los componentes de su propia ruta. La contrapartida
- * documentada es que subir dos veces el mismo `originalFilename` para el
- * mismo step pisa el archivo anterior (mismo id, misma ruta) — ver JSDoc de
- * `EvidenceFile.id` en `core/types/evidence.ts`.
+ * exactamente los componentes de su propia ruta.
+ *
+ * `save()` deduplica `originalFilename` colisiones dentro del mismo step
+ * ANTES de calcular el id (ver `resolveNonCollidingFilename` abajo) — la
+ * fase anterior aceptaba deliberadamente que subir dos veces el mismo
+ * nombre pisara el archivo previo (ver JSDoc viejo de `EvidenceFile.id` en
+ * `core/types/evidence.ts`, actualizado junto con este cambio). Motivo real
+ * para resolverlo ahora: pegar una imagen del portapapeles (`Ctrl+V`) le da
+ * el mismo nombre genérico a CADA imagen pegada (típicamente `image.png`,
+ * decisión del navegador, no algo que este código controle) — con el
+ * comportamiento viejo, pegar una segunda imagen en el mismo step
+ * silenciosamente reemplazaba la primera en vez de agregarse. La
+ * deduplicación reutiliza `fileExists` (ya existente, usado por
+ * `scanEvidenceTree`) para mantener la misma propiedad de "todo se puede
+ * recalcular escaneando el filesystem, sin índice separado" — el nombre
+ * deduplicado (p. ej. `image (1).png`) es el que efectivamente queda en
+ * disco y el que se devuelve como `originalFilename`, así que no hay
+ * ninguna metadata oculta que no esté ya en la ruta del archivo.
  */
 export function createEvidenceStore(baseDir: string, deps: EvidenceStoreDeps = {}): EvidenceStore {
   const imageProcessor = deps.imageProcessor ?? defaultImageProcessor;
   const evidenceRoot = baseDir;
 
   async function save(input: SaveEvidenceInput): Promise<EvidenceFile> {
-    const { featureId, scenarioId, stepId, originalFilename, buffer } = input;
+    const { featureId, scenarioId, stepId, buffer } = input;
 
     const stepDir = join(evidenceRoot, featureId, scenarioId, stepId);
     await mkdir(stepDir, { recursive: true });
 
+    const originalFilename = await resolveNonCollidingFilename(stepDir, input.originalFilename);
     const filePath = join(stepDir, originalFilename);
     await writeFile(filePath, buffer);
 
@@ -179,6 +194,29 @@ async function fileExists(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Si `stepDir/filename` ya existe, agrega un sufijo numérico entre
+ * paréntesis antes de la extensión (" (1)", " (2)", ...) — mismo criterio
+ * que "guardar copia" en cualquier explorador de archivos — hasta encontrar
+ * un nombre libre dentro de ese step. Si no hay colisión, devuelve
+ * `filename` tal cual (comportamiento sin cambios para nombres únicos, que
+ * es el caso normal de file picker/drag&drop con nombres reales).
+ */
+async function resolveNonCollidingFilename(stepDir: string, filename: string): Promise<string> {
+  if (!(await fileExists(join(stepDir, filename)))) return filename;
+
+  const extension = extname(filename);
+  const base = filename.slice(0, filename.length - extension.length);
+
+  let attempt = 1;
+  let candidate = `${base} (${attempt})${extension}`;
+  while (await fileExists(join(stepDir, candidate))) {
+    attempt++;
+    candidate = `${base} (${attempt})${extension}`;
+  }
+  return candidate;
 }
 
 /**

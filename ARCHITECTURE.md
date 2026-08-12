@@ -1520,3 +1520,63 @@ punto).
   `init.test.ts` (el `qa-config.json` generado incluye `branding` con los 4
   colores y `logoPath`, y el archivo copiado es byte a byte idéntico al
   logo fuente del paquete).
+
+### Post-fase 6 — bugfix real: pegar 2+ imágenes del portapapeles en el mismo step pisaba la anterior
+
+Reportado por el usuario: "Ctrl+C + Ctrl+V" (la feature de pegar evidencia
+desde el portapapeles, ver ARCHITECTURE.md "UX del runner") solo dejaba la
+ÚLTIMA imagen pegada por step — pegar una segunda reemplazaba a la primera
+en vez de agregarse.
+
+**Causa real, ya documentada como limitación aceptada desde fase 2** (ver
+JSDoc viejo de `EvidenceFile.id` en `core/types/evidence.ts`, y el
+`createEvidenceStore` de `core/evidence/evidenceStore.ts`): el id de una
+evidencia es un hash de `featureId:scenarioId:stepId:originalFilename` —
+subir dos archivos con el mismo `originalFilename` para el mismo step
+produce el mismo id, y por lo tanto la misma ruta en disco (`save()`
+escribía directo con `writeFile(filePath, buffer)`, pisando lo que hubiera
+ahí). El navegador le pone el mismo nombre genérico a TODAS las imágenes
+pegadas del portapapeles (típicamente `image.png`, no algo que este código
+controle) — por eso el bug aparece siempre con paste y prácticamente nunca
+con file picker/drag&drop (donde los nombres reales casi siempre difieren).
+El JSDoc de fase 2 ya marcaba esto como "deduplicar con sufijos (-2, -3,
+...) queda para una fase futura si se necesita" — esa fase es esta.
+
+**Corrección**: nueva función `resolveNonCollidingFilename(stepDir,
+filename)` en `evidenceStore.ts`, llamada al inicio de `save()` ANTES de
+calcular el id. Si `stepDir/filename` ya existe, prueba `"nombre (1).ext"`,
+`"nombre (2).ext"`, ... (mismo criterio que "guardar copia" de cualquier
+explorador de archivos) hasta encontrar un nombre libre — reutiliza
+`fileExists` (ya existía, usado por `scanEvidenceTree`), sin agregar
+ninguna dependencia nueva. El nombre deduplicado pasa a ser el
+`originalFilename` real devuelto (y por lo tanto el que entra al hash del
+id) — se preserva la propiedad de fase 2 de "todo se puede recalcular
+escaneando el filesystem, sin índice separado en memoria/disco": no hay
+ninguna metadata sobre la deduplicación que no esté ya en el nombre físico
+del archivo.
+
+**No es a prueba de carreras** (dos requests HTTP genuinamente concurrentes
+podrían ver ambas "no existe" antes de que cualquiera escriba — clásico
+TOCTOU): se aceptó el mismo riesgo residual que ya tolera el resto de este
+proyecto para su caso de uso real (un solo QA, acciones humanas de paste
+con espaciado real entre sí, ver `session.json` "sin bloqueo de archivo" en
+la sección de arriba) — dentro de una misma request HTTP, el route handler
+(`adapters/server/routes/session.ts`) ya guarda el lote de archivos con un
+`for...of` secuencial (no `Promise.all`), así que pegar varias imágenes de
+una sola vez tampoco corre ese riesgo.
+
+Tests actualizados en `evidenceStore.test.ts`: el test viejo
+("guardar el mismo input dos veces produce el mismo id") probaba
+literalmente el comportamiento que se acaba de eliminar a propósito — se
+reemplazó por tres tests: determinismo del id via el contenido (dos
+`baseDir` distintos, mismo `featureId/scenarioId/stepId/originalFilename`,
+contenido distinto → mismo id), la deduplicación real (dos saves con
+`"image.png"` y contenido distinto en el mismo step → `"image.png"` +
+`"image (1).png"`, ambos archivos en disco con su contenido real e ids
+distintos, una tercera colisión sigue a `" (2)"`), y que un
+`originalFilename` ya único no se toca (sin cambio de comportamiento para
+el caso normal). Verificado además de punta a punta contra un server real
+(dos `POST .../evidence` con el mismo `filename=image.png` y contenido
+distinto, simulando exactamente dos pastes de portapapeles): la respuesta
+del segundo devuelve `"image (1).png"`, y ambos archivos quedan en disco
+sin pisarse.

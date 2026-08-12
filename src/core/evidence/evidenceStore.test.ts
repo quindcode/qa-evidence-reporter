@@ -57,20 +57,76 @@ describe('createEvidenceStore', () => {
       expect(thumbImage.width).toBe(320);
     });
 
-    it('ids determinísticos: guardar el mismo input dos veces produce el mismo id', async () => {
-      const store = createEvidenceStore(dir);
-      const buffer = await makePngBuffer();
+    it('id determinístico: el id depende solo de featureId/scenarioId/stepId/originalFilename, no del contenido', async () => {
       const input = {
         featureId: 'f0-login',
         scenarioId: 'f0-login_s0-successful-login',
         stepId: 'f0-login_s0-successful-login_st0',
         originalFilename: 'screenshot.png',
-        buffer,
       };
 
-      const first = await store.save(input);
-      const second = await store.save(input);
-      expect(first.id).toBe(second.id);
+      // Dos proyectos (baseDir) distintos, misma terna id + mismo
+      // originalFilename, contenido distinto: deben producir el mismo id —
+      // confirma que el hash no depende del contenido del archivo (ver
+      // JSDoc de EvidenceFile.id), solo de la ruta lógica. Se usan dos
+      // baseDir en vez de guardar dos veces en el mismo store para no
+      // disparar la deduplicación por colisión (ver test siguiente), que
+      // es un comportamiento distinto al que prueba este test.
+      const dir2 = await mkdtemp(join(tmpdir(), 'qa-evidence-'));
+      try {
+        const evidenceA = await createEvidenceStore(dir).save({
+          ...input,
+          buffer: Buffer.from('contenido-a'),
+        });
+        const evidenceB = await createEvidenceStore(dir2).save({
+          ...input,
+          buffer: Buffer.from('contenido-b-completamente-distinto'),
+        });
+        expect(evidenceA.id).toBe(evidenceB.id);
+      } finally {
+        await rm(dir2, { recursive: true, force: true });
+      }
+    });
+
+    it('pegar/subir el mismo originalFilename dos veces en el mismo step AGREGA, no pisa (caso real: pegar 2 imágenes del portapapeles, ambas "image.png")', async () => {
+      const store = createEvidenceStore(dir);
+      const input = {
+        featureId: 'f0-login',
+        scenarioId: 'f0-login_s0-successful-login',
+        stepId: 'f0-login_s0-successful-login_st0',
+        originalFilename: 'image.png',
+      };
+      const firstBuffer = await makePngBuffer();
+      const secondBuffer = Buffer.from('contenido-completamente-distinto-del-segundo-paste');
+
+      const first = await store.save({ ...input, buffer: firstBuffer });
+      const second = await store.save({ ...input, buffer: secondBuffer });
+
+      // Nombres e ids distintos: el segundo NO pisó al primero.
+      expect(first.originalFilename).toBe('image.png');
+      expect(second.originalFilename).toBe('image (1).png');
+      expect(first.id).not.toBe(second.id);
+
+      // Ambos archivos existen en disco, cada uno con SU contenido real.
+      await expect(readFile(join(dir, first.path))).resolves.toEqual(firstBuffer);
+      await expect(readFile(join(dir, second.path))).resolves.toEqual(secondBuffer);
+
+      // Una tercera colisión sigue la misma numeración (" (2)", no reusa " (1)").
+      const third = await store.save({ ...input, buffer: Buffer.from('tercero') });
+      expect(third.originalFilename).toBe('image (2).png');
+    });
+
+    it('originalFilename ya único no se toca (sin cambio de comportamiento para el caso normal de file picker/drag&drop)', async () => {
+      const store = createEvidenceStore(dir);
+      const evidence = await store.save({
+        featureId: 'f0-login',
+        scenarioId: 'f0-login_s0-successful-login',
+        stepId: 'f0-login_s0-successful-login_st0',
+        originalFilename: 'captura-real-del-bug.png',
+        buffer: await makePngBuffer(),
+      });
+
+      expect(evidence.originalFilename).toBe('captura-real-del-bug.png');
     });
   });
 
