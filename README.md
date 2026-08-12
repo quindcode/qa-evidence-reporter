@@ -66,23 +66,6 @@ Crea, en el directorio actual:
 - `features/` (con un `.feature` de ejemplo, comentado y editable/borrable)
 - `evidence/` y `reports/` (vacíos)
 - `qa-config.json` (ver formato completo más abajo)
-- `run.sh` / `run.command` / `run.bat` / `run.desktop`: lanzadores de doble
-  clic (Linux, macOS, Windows, y un `.desktop` adicional para Linux —
-  ver nota abajo) que corren `qa-evidence-reporter run` sin necesitar abrir
-  una terminal — útil si quien ejecuta la sesión de QA no está familiarizado
-  con la línea de comandos.
-
-  > **Linux**: usá `run.desktop`, no `run.sh`. Muchos gestores de archivos
-  > (Nautilus/GNOME Files, el default en Ubuntu y otras distros) tratan los
-  > `.sh` ejecutables como texto y los abren en un editor al doble clic en
-  > vez de correrlos — es una preferencia del gestor de archivos, no algo
-  > que el permiso de ejecución del archivo pueda forzar. `run.desktop`
-  > sigue la convención real de "acceso directo ejecutable" de Linux
-  > (especificación freedesktop.org) y sí es reconocido como aplicación por
-  > Nautilus/KDE/XFCE/etc. Si el doble clic sobre `run.desktop` tampoco
-  > funciona, probá clic derecho → "Permitir lanzamiento"/"Confiar y
-  > ejecutar" (algunos gestores de archivos piden esa confirmación una sola
-  > vez por archivo, la primera vez).
 
 ```bash
 qa-evidence-reporter init --name "Mi Proyecto" # opcional, si no se toma el nombre de la carpeta
@@ -183,10 +166,7 @@ puerto configurado ya está en uso (por ejemplo, porque hay otro proyecto de
 QA corriendo en paralelo en la misma máquina), prueba automáticamente los
 siguientes puertos hasta encontrar uno libre — nunca hace falta editar
 `qa-config.json` a mano solo para poder correr dos sesiones a la vez; el
-navegador se abre igual, apuntando al puerto real que consiguió. Además del
-comando de terminal, también se puede arrancar con doble clic en
-`run.command`/`run.bat`/`run.desktop` (ver `init` más arriba — en Linux
-usá `run.desktop`, no `run.sh`). Desde ahí:
+navegador se abre igual, apuntando al puerto real que consiguió. Desde ahí:
 
 1. Seleccionás qué features correr.
 2. Recorrés cada step, adjuntando evidencia (file picker, drag&drop o

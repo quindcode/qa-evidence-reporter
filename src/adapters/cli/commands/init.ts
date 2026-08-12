@@ -1,4 +1,4 @@
-import { chmod, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 
 import {
@@ -35,79 +35,6 @@ Feature: Ejemplo de inicio de sesión
     When ingresa su usuario y contraseña válidos
     Then accede correctamente a su cuenta
 `;
-
-/**
- * Lanzadores de doble clic que `init` deja en la raíz del proyecto QA, para
- * que correr una sesión no requiera abrir una terminal y escribir el
- * comando a mano. Se generan siempre los cuatro, independientemente del SO
- * donde corra `init`, porque un mismo proyecto de QA (un repo compartido)
- * puede terminar clonado en máquinas con SO distinto entre los miembros del
- * equipo.
- *
- * `run.sh` y `run.command` tienen el mismo contenido (shell script): Finder
- * en macOS solo ejecuta scripts con doble clic si la extensión es
- * `.command` (con `.sh` los abre en un editor de texto), mientras que en
- * Linux la convención "clásica" es `.sh`.
- *
- * `run.desktop` (verificado con un doble clic real en Nautilus/GNOME
- * Files sobre Ubuntu, tras un reporte de un usuario): que `run.sh` tenga el
- * bit de ejecución (`chmod 755`) NO garantiza que el gestor de archivos lo
- * corra al doble clic — Nautilus, desde hace varias versiones, trata los
- * "archivos de texto ejecutables" como texto por default y los abre en un
- * editor en vez de correrlos (es una preferencia del gestor de archivos,
- * no algo que el bit de ejecución pueda forzar). El mecanismo real para un
- * "acceso directo ejecutable" en Linux es un archivo `.desktop`
- * (especificación freedesktop.org, reconocido por GNOME/KDE/XFCE/Cinnamon/
- * MATE) — con `Exec=` apuntando al comando real, el gestor de archivos lo
- * reconoce como aplicación en vez de texto. Se genera con una ruta absoluta
- * a `run.sh` (conocida en el momento de `init`, ver `runInit`) para no
- * depender de campos de sustitución del formato `.desktop` que no todos los
- * gestores de archivos soportan igual.
- */
-const RUN_SCRIPT_SH = `#!/usr/bin/env bash
-# Generado por "qa-evidence-reporter init". Doble clic para levantar el
-# runner sin escribir el comando a mano.
-#
-# Si en Linux el doble clic solo ABRE este archivo en un editor de texto en
-# vez de ejecutarlo, es el comportamiento default de tu gestor de archivos
-# para "archivos de texto ejecutables" (no un problema de este script) — usá
-# "run.desktop" en su lugar, o corré "./run.sh" desde una terminal abierta en
-# esta carpeta.
-cd "$(dirname "$0")"
-qa-evidence-reporter run
-`;
-
-const RUN_SCRIPT_BAT = `@echo off
-REM Generado por "qa-evidence-reporter init". Doble clic para levantar el
-REM runner sin escribir el comando a mano.
-cd /d "%~dp0"
-qa-evidence-reporter run
-pause
-`;
-
-/**
- * Contenido de `run.desktop` (ver JSDoc de `RUN_SCRIPT_SH` para el porqué).
- * `Terminal=true` deja visible la salida real del comando (mismo criterio
- * que el `pause` de `run.bat`) en vez de correrlo oculto — importante para
- * que un error de arranque (puerto, config inválida, etc.) no desaparezca
- * sin que el QA lo vea. `runScriptShPath` es la ruta ABSOLUTA a `run.sh` ya
- * escrito en este mismo `runInit`, entre comillas dentro del valor de
- * `Exec=` (la forma soportada por la especificación Desktop Entry para un
- * argumento con espacios), para no depender de campos de sustitución
- * (`%k`, etc.) marcados como deprecados/inconsistentes entre gestores de
- * archivos.
- */
-function buildRunDesktopContents(runScriptShPath: string): string {
-  return `[Desktop Entry]
-Type=Application
-Name=Iniciar sesión de QA
-Comment=Levanta "qa-evidence-reporter run" sin necesitar terminal
-Exec=bash "${runScriptShPath}"
-Terminal=true
-Icon=utilities-terminal
-Categories=Development;
-`;
-}
 
 export interface InitCommandOptions {
   /** `--name`. Si no se provee, se usa el nombre de la carpeta actual (ver `runInit`). */
@@ -186,18 +113,6 @@ export async function runInit(
   await writeFile(join(evidenceDir, '.gitkeep'), '', 'utf-8');
   await writeFile(join(reportsDir, '.gitkeep'), '', 'utf-8');
 
-  const runScriptShPath = join(cwd, 'run.sh');
-  const runScriptCommandPath = join(cwd, 'run.command');
-  const runScriptBatPath = join(cwd, 'run.bat');
-  const runDesktopPath = join(cwd, 'run.desktop');
-  await writeFile(runScriptShPath, RUN_SCRIPT_SH, 'utf-8');
-  await chmod(runScriptShPath, 0o755);
-  await writeFile(runScriptCommandPath, RUN_SCRIPT_SH, 'utf-8');
-  await chmod(runScriptCommandPath, 0o755);
-  await writeFile(runScriptBatPath, RUN_SCRIPT_BAT, 'utf-8');
-  await writeFile(runDesktopPath, buildRunDesktopContents(resolve(runScriptShPath)), 'utf-8');
-  await chmod(runDesktopPath, 0o755);
-
   await writeFile(configFilePath, buildConfigFileContents(projectName), 'utf-8');
   logger.info('qa-config.json creado', { configFilePath, projectName });
 
@@ -248,15 +163,7 @@ function printNextSteps(
   );
   print('  2. Agregá tus archivos .feature en "features/" (o editá/borrá el ejemplo incluido).');
   print(
-    '  3. Corré "qa-evidence-reporter run" (o hacé doble clic en "run.command" en macOS, ' +
-      '"run.desktop" en Linux, "run.bat" en Windows) para cargar la configuración y las ' +
-      'features del proyecto.',
-  );
-  print(
-    '     (En Linux, si el doble clic abre "run.sh"/"run.desktop" en un editor de texto en ' +
-      'vez de ejecutarlo, es la configuración default de tu gestor de archivos para archivos ' +
-      'ejecutables — probá clic derecho → "Ejecutar"/"Permitir lanzamiento", o cambiá esa ' +
-      'preferencia una vez por todas en tu gestor de archivos.)',
+    '  3. Corré "qa-evidence-reporter run" para cargar la configuración y las features del proyecto.',
   );
   print(
     '  4. Ejecutá la sesión de QA manual y corré "qa-evidence-reporter report" para generar el reporte HTML final.',

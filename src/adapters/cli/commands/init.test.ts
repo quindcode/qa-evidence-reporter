@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
@@ -69,46 +69,6 @@ describe('runInit', () => {
 
     // Debe haber impreso próximos pasos accionables, no quedar en silencio.
     expect(messages.join('\n')).toMatch(/próximos pasos/i);
-  });
-
-  it('crea lanzadores de doble clic (run.sh, run.command, run.bat) ejecutables con el comando run', async () => {
-    await runInit(cwd, {}, { print: () => {}, logger: noopLogger });
-
-    const shContents = await readFile(join(cwd, 'run.sh'), 'utf-8');
-    const commandContents = await readFile(join(cwd, 'run.command'), 'utf-8');
-    const batContents = await readFile(join(cwd, 'run.bat'), 'utf-8');
-
-    expect(shContents).toContain('qa-evidence-reporter run');
-    expect(commandContents).toContain('qa-evidence-reporter run');
-    expect(batContents).toContain('qa-evidence-reporter run');
-
-    // run.sh y run.command deben quedar con permiso de ejecución (0o755):
-    // sin esto, un doble clic en Linux/macOS no los corre, solo los abre en
-    // un editor de texto.
-    const shMode = (await stat(join(cwd, 'run.sh'))).mode & 0o777;
-    const commandMode = (await stat(join(cwd, 'run.command'))).mode & 0o777;
-    expect(shMode).toBe(0o755);
-    expect(commandMode).toBe(0o755);
-  });
-
-  it('crea run.desktop (Linux) apuntando a la ruta absoluta de run.sh, con permiso de ejecución', async () => {
-    await runInit(cwd, {}, { print: () => {}, logger: noopLogger });
-
-    const desktopContents = await readFile(join(cwd, 'run.desktop'), 'utf-8');
-
-    expect(desktopContents).toContain('[Desktop Entry]');
-    expect(desktopContents).toContain('Type=Application');
-    expect(desktopContents).toContain('Terminal=true');
-    // Ruta ABSOLUTA (no relativa): un doble clic sobre run.desktop no
-    // arranca con cwd = la carpeta del proyecto, así que Exec= no puede
-    // depender de una ruta relativa a "donde sea que se lanzó desde".
-    expect(desktopContents).toContain(`Exec=bash "${join(cwd, 'run.sh')}"`);
-
-    // Sin el bit de ejecución, Nautilus/GNOME Files tampoco reconoce el
-    // .desktop como aplicación lanzable (mismo problema que motivó agregar
-    // este archivo en primer lugar, ver JSDoc de RUN_SCRIPT_SH en init.ts).
-    const desktopMode = (await stat(join(cwd, 'run.desktop'))).mode & 0o777;
-    expect(desktopMode).toBe(0o755);
   });
 
   it('usa --name para el projectName en vez del nombre de la carpeta', async () => {

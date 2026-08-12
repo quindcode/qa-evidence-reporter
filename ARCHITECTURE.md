@@ -1425,3 +1425,31 @@ sirviendo para quien prefiera `./run.sh` desde una terminal), pero deja de
 promocionarse como el lanzador de doble clic recomendado en Linux. Test
 nuevo en `init.test.ts` (contenido de `run.desktop`, ruta absoluta correcta
 a `run.sh`, y modo de archivo `0o755`).
+
+### Post-fase 6 — reversión: se eliminan los lanzadores de doble clic (`run.sh`/`run.command`/`run.bat`/`run.desktop`)
+
+Mismo usuario: tras el fix anterior (`run.desktop`), el doble clic en
+Ubuntu SEGUÍA abriendo un editor de texto en vez de ejecutar nada — ni
+`run.sh`/`run.command` ni `run.desktop` funcionaron en la máquina real de
+prueba. No hay forma de diagnosticar la causa exacta desde este entorno de
+desarrollo (sin un gestor de archivos gráfico real para reproducir):
+podría ser una variante de gestor de archivos distinta a Nautilus, un flag
+de confianza/"Allow Launching" que Nautilus pide antes del primer doble
+clic y no se cubrió, u otra particularidad del entorno de escritorio de esa
+máquina en particular. Dos intentos con hipótesis razonables (bit de
+ejecución, luego `.desktop`) fallaron igual en la prueba real; seguir
+adivinando un tercer mecanismo sin poder reproducir el problema no es un
+uso razonable de esfuerzo — se revierte todo lo agregado en las dos
+entradas anteriores en vez de intentar un cuarto enfoque a ciegas.
+
+Se eliminaron de `init.ts`: la generación de `run.sh`/`run.command`/
+`run.bat`/`run.desktop` (contenido, `chmod`, y las líneas de
+`printNextSteps` que los mencionaban), y sus tests en `init.test.ts`. El
+flujo vuelve a ser el original: `init` seguido de `qa-evidence-reporter
+run` (o el `run.bat` de Windows sigue sin reportarse roto — no se descartó
+por falta de confirmación, pero se quitó junto con el resto para no dejar
+una superficie a medias entre "confirmado" y "no probado"). El fallback
+automático de puerto (entrada de más arriba, confirmado funcionando por
+este mismo usuario) NO se tocó — son dos features independientes que
+llegaron en el mismo pedido, y solo la de los lanzadores resultó
+irreproducible/fallida en uso real.
