@@ -411,7 +411,9 @@ cualquiera, la API de adjuntos de Jira no distingue tipo) y:
 - agrega un **comentario** al issue con un resumen legible: el nombre de
   cada feature probada, sus scenarios (nombre + resultado — nunca el
   detalle paso a paso, eso sigue solo en el `.zip`), y el % de aprobado/
-  fallado/omitido de la sesión.
+  fallado/omitido de la sesión — calculado sobre STEPS, la misma base que
+  usa el dashboard del reporte HTML, para que ambos números coincidan
+  siempre (nunca vas a ver un % distinto en Jira que en el reporte).
 
 Solo **Jira Cloud** (`*.atlassian.net`) por ahora — Jira Server/Data Center
 no está soportado, y Azure DevOps todavía no tiene ninguna integración (ver

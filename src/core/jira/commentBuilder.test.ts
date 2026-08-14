@@ -61,9 +61,10 @@ describe('buildQaSummaryComment', () => {
     expect(text).not.toContain('un paso');
   });
 
-  it('calcula los porcentajes sobre el total de SCENARIOS (no de steps)', () => {
+  it('calcula los porcentajes sobre el total de STEPS (misma base que el dashboard del reporte HTML)', () => {
     // 1 feature, 2 scenarios: uno pass (con 3 steps pass) y uno fail (con 1 step fail) —
-    // a nivel step sería 75% pass / 25% fail; a nivel scenario debe ser 50/50.
+    // a nivel scenario sería 50% pass / 50% fail; a nivel step debe ser 75%/25%, para
+    // coincidir con `buildResultSummary` (`reportGenerator.ts`), que siempre contó steps.
     const doc = buildQaSummaryComment(
       session([
         feature('Checkout', [
@@ -74,12 +75,12 @@ describe('buildQaSummaryComment', () => {
     );
 
     const text = textOf(doc);
-    expect(text).toContain('Aprobado: 50% (1/2)');
-    expect(text).toContain('Fallido: 50% (1/2)');
-    expect(text).toContain('Omitido: 0% (0/2)');
+    expect(text).toContain('Aprobado: 75% (3/4)');
+    expect(text).toContain('Fallido: 25% (1/4)');
+    expect(text).toContain('Omitido: 0% (0/4)');
   });
 
-  it('con una sesión sin scenarios, los porcentajes son 0 (nunca NaN)', () => {
+  it('con una sesión sin steps, los porcentajes son 0 (nunca NaN)', () => {
     const doc = buildQaSummaryComment(session([]));
 
     const text = textOf(doc);

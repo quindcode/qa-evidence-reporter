@@ -811,7 +811,9 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
       const commentText = JSON.stringify(commentBody.body.content);
       expect(commentText).toContain('Inicio de sesión');
       expect(commentText).toContain('Login exitoso — Aprobado');
-      expect(commentText).toContain('Aprobado: 100% (1/1)');
+      // % sobre steps (2 steps del scenario "Login exitoso", ambos pass) — misma
+      // base de cálculo que el dashboard del reporte HTML, no sobre scenarios.
+      expect(commentText).toContain('Aprobado: 100% (2/2)');
     });
 
     it('si el issue ya tiene un "qa-report.zip" adjunto, lo borra antes de subir el nuevo', async () => {

@@ -19,26 +19,35 @@ export interface AdfDocument {
  * seleccionada, su nombre y la lista de sus scenarios (nombre + resultado
  * derivado con `deriveScenarioResult` — NUNCA el detalle de steps, que es
  * demasiado granular para un comentario de Jira y ya vive en el `.zip`
- * adjunto), seguido de un resumen con el % de aprobado/fallado/omitido
- * calculado sobre el total de SCENARIOS (no de steps) de la sesión, para
- * que coincida con la granularidad de la lista de arriba.
+ * adjunto), seguido de un resumen con el % de aprobado/fallado/omitido.
+ *
+ * Decisión de diseño (% sobre STEPS, no sobre scenarios): la primera
+ * versión de este builder calculaba el resumen sobre el total de
+ * scenarios, para que coincidiera con la granularidad de la lista de
+ * arriba — pero eso deja un número distinto al que ya muestra el dashboard
+ * del reporte HTML (`buildResultSummary` en `reportGenerator.ts`, que
+ * SIEMPRE calculó este % sobre steps), confundiendo a quien compara ambos.
+ * Se prioriza que las dos superficies (reporte HTML y comentario de Jira)
+ * muestren SIEMPRE el mismo número sobre la MISMA base de cálculo, aunque
+ * eso signifique que no coincida 1:1 con la cantidad de scenarios listados
+ * arriba (un scenario con 3 steps pesa más que uno con 1 solo step).
  */
 export function buildQaSummaryComment(state: SessionState): AdfDocument {
   const content: unknown[] = [];
-  const scenarioResults: StepResult[] = [];
+  const stepResults: StepResult[] = [];
 
   for (const feature of state.selectedFeatures) {
     content.push(heading(feature.name));
     const items = feature.scenarios.map((scenario) => {
       const result = deriveScenarioResult(scenario);
-      scenarioResults.push(result);
+      for (const step of scenario.steps) stepResults.push(step.result);
       return listItem(`${scenario.name} — ${RESULT_LABELS[result]}`);
     });
     content.push(bulletList(items));
   }
 
   content.push(heading('Resumen'));
-  content.push(bulletList(buildSummaryItems(scenarioResults)));
+  content.push(bulletList(buildSummaryItems(stepResults)));
 
   return { type: 'doc', version: 1, content };
 }
