@@ -91,7 +91,7 @@ export interface DonutChartOptions {
  *   alcanza como única fuente de la distribución para quien no pueda
  *   percibir colores.
  *
- * Caso `total === 0` (sesión sin steps): se dibuja solo el aro de fondo
+ * Caso `total === 0` (sesión sin scenarios): se dibuja solo el aro de fondo
  * (sin porciones) y el centro muestra "Sin datos", en vez de dividir por
  * cero.
  *
@@ -111,8 +111,8 @@ export function renderDonutChart(counts: ResultCounts, options: DonutChartOption
 
   const ariaLabel =
     total === 0
-      ? 'Distribución de resultados: todavía no hay steps ejecutados.'
-      : `Distribución de resultados sobre ${total} step${total === 1 ? '' : 's'}: ` +
+      ? 'Distribución de resultados: todavía no hay scenarios ejecutados.'
+      : `Distribución de resultados sobre ${total} scenario${total === 1 ? '' : 's'}: ` +
         RESULT_ORDER.map((key) => `${RESULT_LABELS[key]} ${percentOf(counts[key], total)}%`).join(
           ', ',
         ) +
@@ -164,7 +164,7 @@ export interface ProgressBarOptions {
 }
 
 /**
- * Barra de progreso simple (% completado = steps que ya no están en
+ * Barra de progreso simple (% completado = scenarios que ya no están en
  * `'pending'`, ver `ResultSummary.completionPercent` en
  * `core/types/report.ts`), como string SVG autocontenido. Función pura,
  * mismas garantías de accesibilidad que `renderDonutChart` (`role="img"` +

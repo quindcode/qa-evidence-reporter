@@ -193,6 +193,29 @@ describe('createSessionEngine', () => {
       expect(state.currentPosition).toEqual(lastPosition);
     });
 
+    it('regresión: next() sigue avanzando tras retroceder desde una sesión ya "completed" (no debe quedar pegado)', async () => {
+      // Bug real reportado: al llegar al final, `status` pasa a 'completed' y
+      // se queda así para siempre (nada lo revierte a 'in_progress'). next()
+      // comprobaba `status === 'completed'` como primer chequeo y devolvía
+      // no-op SIEMPRE a partir de ahí, sin importar la posición — así que
+      // retroceder para revisar/editar un step anterior dejaba "Siguiente"
+      // roto (mientras "Anterior" seguía funcionando con normalidad).
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+
+      for (let i = 0; i < 8; i++) await engine.next(); // llega al último step (8 steps en total)
+      let state = engine.getState();
+      expect(state.status).toBe('completed');
+
+      state = await engine.previous(); // retrocede a revisar/editar un step anterior
+      const positionAfterBack = state.currentPosition;
+      expect(state.status).toBe('completed'); // status no se revierte solo, es esperado
+
+      state = await engine.next(); // debe volver a avanzar, no quedar pegado
+      expect(state.currentPosition).not.toEqual(positionAfterBack);
+      expect(engine.getCurrentStep()?.step.id).toBe('f1-logout_s0-successful-logout_st1');
+    });
+
     it('previous() retrocede, cruzando límites, y es un no-op en el primer step', async () => {
       const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
       await engine.createSession(makeFeatures(), 'P');

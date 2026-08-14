@@ -27,6 +27,7 @@ import {
   type ScenarioExecution,
   type SessionState,
   type StepExecution,
+  type StepResult,
 } from '../types/session.js';
 import { renderDonutChart, renderProgressBar } from './charts.js';
 import { createHandlebarsTemplateEngine } from './templateEngine.js';
@@ -321,7 +322,7 @@ function toFeatureView(
   feature: FeatureExecution,
   scenarios: ScenarioReportView[],
 ): FeatureReportView {
-  const counts = buildResultCounts(flattenFeatureSteps(feature));
+  const counts = buildResultCounts(collectFeatureScenarioResults(feature));
   return {
     id: feature.id,
     slug: feature.id,
@@ -363,17 +364,23 @@ async function buildFeatureViews(
   return featureViews;
 }
 
-function flattenFeatureSteps(feature: FeatureExecution): StepExecution[] {
-  return feature.scenarios.flatMap((scenario) => scenario.steps);
+/**
+ * Resultado derivado (`deriveScenarioResult`) de cada scenario de `feature`,
+ * uno por scenario — NUNCA el resultado de cada step individual. Ver nota
+ * de diseño en `buildReportData` sobre por qué el % de aprobado/fallado/
+ * omitido del reporte se mide a nivel scenario.
+ */
+function collectFeatureScenarioResults(feature: FeatureExecution): StepResult[] {
+  return feature.scenarios.map(deriveScenarioResult);
 }
 
-function flattenAllSteps(state: SessionState): StepExecution[] {
-  return state.selectedFeatures.flatMap((feature) => flattenFeatureSteps(feature));
+function collectAllScenarioResults(state: SessionState): StepResult[] {
+  return state.selectedFeatures.flatMap((feature) => collectFeatureScenarioResults(feature));
 }
 
-function buildResultCounts(steps: StepExecution[]): ResultCounts {
+function buildResultCounts(results: StepResult[]): ResultCounts {
   const counts: ResultCounts = { pass: 0, fail: 0, skip: 0, pending: 0 };
-  for (const step of steps) counts[step.result] += 1;
+  for (const result of results) counts[result] += 1;
   return counts;
 }
 
@@ -396,7 +403,15 @@ async function buildReportData(
   clock: () => string,
 ): Promise<ReportData> {
   const features = await buildFeatureViews(state, evidenceStore, config.evidenceBaseDir, outputDir);
-  const summary = buildResultSummary(buildResultCounts(flattenAllSteps(state)));
+  // Decisión de diseño (% sobre SCENARIOS, no sobre steps): un scenario con
+  // 2 steps pass y 1 skip deriva a "skip" (`deriveScenarioResult` — fail >
+  // pendiente > omitido > aprobado), pero si se contaran los 3 steps
+  // sueltos, esos 2 pass igual sumarían al total de aprobados — inflando
+  // el % aunque ESE scenario, como caso de prueba completo, no haya
+  // pasado. Contar por scenario (cada uno pesa 1, con su resultado final)
+  // refleja mejor "cuántos casos de prueba pasaron", que es la pregunta que
+  // de verdad le importa a quien lee el reporte.
+  const summary = buildResultSummary(buildResultCounts(collectAllScenarioResults(state)));
   const branding = await buildBrandingMeta(config.branding, outputDir);
 
   return {

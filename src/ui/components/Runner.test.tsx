@@ -241,3 +241,66 @@ describe('Runner — Adjuntar a Jira', () => {
     expect(screen.queryByRole('link', { name: /ver issue en jira/i })).not.toBeInTheDocument();
   });
 });
+
+describe('Runner — Navegación', () => {
+  it('en el último step de la sesión, el botón "Siguiente" desaparece (no solo se deshabilita)', () => {
+    // SESSION (fixture del tope del archivo) tiene una sola feature, un solo
+    // scenario y un solo step — currentPosition {0,0,0} es, por construcción,
+    // el último (y único) step de toda la sesión.
+    mockFetch();
+
+    render(
+      <Runner
+        session={SESSION}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={false}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /siguiente/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /anterior/i })).toBeInTheDocument();
+  });
+
+  it('con más de un step por delante, el botón "Siguiente" sigue visible', () => {
+    const sessionWithTwoSteps: SessionState = {
+      ...SESSION,
+      selectedFeatures: [
+        {
+          ...SESSION.selectedFeatures[0],
+          scenarios: [
+            {
+              ...SESSION.selectedFeatures[0].scenarios[0],
+              steps: [
+                ...SESSION.selectedFeatures[0].scenarios[0].steps,
+                {
+                  id: 'f0-login_s0_st1',
+                  step: { keyword: 'Then', text: 'they see the dashboard', fromBackground: false },
+                  result: 'pending',
+                  evidenceFileIds: [],
+                  timestamps: {},
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    mockFetch();
+
+    render(
+      <Runner
+        session={sessionWithTwoSteps}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={false}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /siguiente/i })).toBeInTheDocument();
+  });
+});

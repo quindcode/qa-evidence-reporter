@@ -109,7 +109,6 @@ export function createSessionEngine(
 
   async function next(): Promise<SessionState> {
     const current = requireState();
-    if (current.status === 'completed') return current;
 
     const advanced = adjacentPosition(current, current.currentPosition, 1);
     if (advanced) {

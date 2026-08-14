@@ -237,10 +237,17 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     expect(indexHtml).toContain('Proyecto Demo');
     expect(indexHtml).toContain('Login');
     expect(indexHtml).toContain('Checkout');
-    // Login: 1 pass + 1 skip de 2 steps -> 50% de éxito. Checkout: 1 pass + 1
-    // fail de 2 -> 50% también. La sesión completa: 2 pass, 1 fail, 1 skip
-    // de 4 steps -> 50% pass rate global.
-    expect(indexHtml).toContain('50%');
+    // Métrica a nivel SCENARIO, no de steps (ver nota de diseño en
+    // `buildReportData`): el único scenario de "Login" tiene 1 step pass y 1
+    // skip -> deriva a "skip" completo (0% de éxito para esa feature); el
+    // único scenario de "Checkout" tiene 1 pass y 1 fail -> deriva a "fail"
+    // (0% también). Ninguno de los 2 scenarios de la sesión terminó "pass"
+    // -> 0% global, aunque a nivel de steps sueltos hubiera 2 pass de 4.
+    expect(indexHtml).toContain('<p class="qa-hero__number">0<span>%</span></p>');
+    // Ambas features muestran "0/1 scenarios" en su fila — si el conteo
+    // siguiera siendo por steps, Login mostraría "1/2" (su step en pass sí
+    // cuenta ahí), no "0/1".
+    expect(indexHtml).toContain('<span class="qa-feature-row__count">0/1 scenarios</span>');
     expect(indexHtml).toMatch(/qa-badge--fail/);
     expect(indexHtml).toContain('features/f0-login.html');
     expect(indexHtml).toContain('features/f1-checkout.html');

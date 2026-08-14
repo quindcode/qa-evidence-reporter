@@ -20,7 +20,7 @@
           <div class="qa-hero__stat">
             <p class="qa-hero__number">{{summary.passRatePercent}}<span>%</span></p>
             <p class="qa-hero__caption">
-              aprobado sobre {{summary.total}} step{{pluralize summary.total}} ejecutados
+              aprobado sobre {{summary.total}} scenario{{pluralize summary.total}} ejecutados
             </p>
             {{#if firstFailureHref}}
               <a class="qa-jump-to-failure" href="{{basePath}}{{firstFailureHref}}">{{> icon-alert}} Ver primer fallo</a>
@@ -60,7 +60,7 @@
                     {{/if}}
                   </div>
                   <div class="qa-feature-row__meta">
-                    <span class="qa-feature-row__count">{{summary.pass}}/{{summary.total}} steps</span>
+                    <span class="qa-feature-row__count">{{summary.pass}}/{{summary.total}} scenarios</span>
                     {{> badge}}
                     <span class="qa-feature-row__percent">{{summary.passRatePercent}}%</span>
                     {{> chevron-right}}

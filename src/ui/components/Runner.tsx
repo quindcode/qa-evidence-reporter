@@ -7,7 +7,7 @@ import { EvidenceArea } from './EvidenceArea';
 import { ProgressHeader } from './ProgressHeader';
 import { StepResultPanel } from './StepResultPanel';
 import { StepTree } from './StepTree';
-import { getCurrentStepFromSession } from '../types';
+import { getCurrentStepFromSession, isLastStepInSession } from '../types';
 import type { CurrentStepInfo, EvidenceFile, SessionState, StepResult } from '../types';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
@@ -250,6 +250,7 @@ export function Runner({
 
   const currentFeature = session.selectedFeatures[session.currentPosition.featureIndex];
   const currentScenario = currentFeature?.scenarios[session.currentPosition.scenarioIndex];
+  const isLastStep = isLastStepInSession(session);
 
   return (
     <div class="runner">
@@ -317,15 +318,17 @@ export function Runner({
               >
                 ← Anterior
               </button>
-              <button
-                type="button"
-                class="button"
-                onClick={() => void handleNavigate('next')}
-                disabled={busy}
-                title="Atajo: N"
-              >
-                Siguiente →
-              </button>
+              {!isLastStep && (
+                <button
+                  type="button"
+                  class="button"
+                  onClick={() => void handleNavigate('next')}
+                  disabled={busy}
+                  title="Atajo: N"
+                >
+                  Siguiente →
+                </button>
+              )}
             </nav>
           </>
         ) : (

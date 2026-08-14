@@ -61,10 +61,10 @@ describe('buildQaSummaryComment', () => {
     expect(text).not.toContain('un paso');
   });
 
-  it('calcula los porcentajes sobre el total de STEPS (misma base que el dashboard del reporte HTML)', () => {
+  it('calcula los porcentajes sobre el total de SCENARIOS (misma base que el dashboard del reporte HTML), no sobre steps', () => {
     // 1 feature, 2 scenarios: uno pass (con 3 steps pass) y uno fail (con 1 step fail) —
-    // a nivel scenario sería 50% pass / 50% fail; a nivel step debe ser 75%/25%, para
-    // coincidir con `buildResultSummary` (`reportGenerator.ts`), que siempre contó steps.
+    // a nivel step sería 75% pass / 25% fail; a nivel scenario debe ser 50/50, para
+    // coincidir con `buildResultSummary` (`reportGenerator.ts`), que ahora cuenta scenarios.
     const doc = buildQaSummaryComment(
       session([
         feature('Checkout', [
@@ -75,12 +75,25 @@ describe('buildQaSummaryComment', () => {
     );
 
     const text = textOf(doc);
-    expect(text).toContain('Aprobado: 75% (3/4)');
-    expect(text).toContain('Fallido: 25% (1/4)');
-    expect(text).toContain('Omitido: 0% (0/4)');
+    expect(text).toContain('Aprobado: 50% (1/2)');
+    expect(text).toContain('Fallido: 50% (1/2)');
+    expect(text).toContain('Omitido: 0% (0/2)');
   });
 
-  it('con una sesión sin steps, los porcentajes son 0 (nunca NaN)', () => {
+  it('un scenario con 2 steps pass y 1 skip cuenta como 1 scenario OMITIDO en el resumen, no como "2 pass"', () => {
+    // Reproduce exactamente el caso reportado: los steps que sí pasaron
+    // dentro de un scenario que en conjunto no pasó no deben inflar el %
+    // de aprobados del resumen.
+    const doc = buildQaSummaryComment(
+      session([feature('Reportes', [scenario('Exportar CSV', ['pass', 'pass', 'skip'])])]),
+    );
+
+    const text = textOf(doc);
+    expect(text).toContain('Aprobado: 0% (0/1)');
+    expect(text).toContain('Omitido: 100% (1/1)');
+  });
+
+  it('con una sesión sin scenarios, los porcentajes son 0 (nunca NaN)', () => {
     const doc = buildQaSummaryComment(session([]));
 
     const text = textOf(doc);

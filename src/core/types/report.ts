@@ -2,9 +2,13 @@ import type { EvidenceKind } from './evidence.js';
 import type { SessionState, StepResult } from './session.js';
 
 /**
- * Conteo de steps por resultado. Usa las mismas 4 categorías que
- * `StepResult` (ver `core/types/session.ts`) — nunca se agrega una quinta
- * categoría "otro" porque `StepResult` ya es exhaustivo.
+ * Conteo de SCENARIOS por resultado (uno por scenario, vía
+ * `deriveScenarioResult` — nunca un conteo de steps individuales, ver nota
+ * de diseño en `buildReportData`, `core/report/reportGenerator.ts`, sobre
+ * por qué un scenario con steps mixtos pesa 1 con su resultado derivado en
+ * vez de que cada uno de sus steps cuente por separado). Usa las mismas 4
+ * categorías que `StepResult` (ver `core/types/session.ts`) — nunca se
+ * agrega una quinta categoría "otro" porque `StepResult` ya es exhaustivo.
  */
 export interface ResultCounts {
   pass: number;
@@ -73,8 +77,8 @@ export interface ScenarioReportView {
 
 /**
  * Vista de un `FeatureExecution`, con su propio `ResultSummary` (agregado
- * solo de sus scenarios/steps, no de toda la sesión — para poder mostrar el
- * % de éxito por feature en la tabla resumen del dashboard).
+ * solo de sus scenarios, no de toda la sesión — para poder mostrar el % de
+ * éxito por feature en la tabla resumen del dashboard).
  */
 export interface FeatureReportView {
   id: string;

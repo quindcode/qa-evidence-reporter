@@ -236,8 +236,16 @@ export interface SessionEngine {
    * a feature cuando se acaban los steps/scenarios. Al completar el último
    * step de la última feature seleccionada, `status` pasa a `'completed'` y
    * `currentPosition` queda apuntando a ese último step (no "se sale" del
-   * árbol). Llamar a `next()` cuando ya está `'completed'` es un no-op
+   * árbol). Llamar a `next()` estando YA en ese último step es un no-op
    * (devuelve el estado sin cambios, no lanza error).
+   *
+   * Importante: el no-op se decide por POSICIÓN (¿hay un step siguiente al
+   * que avanzar?), nunca por `status`. Si el QA completó la sesión y
+   * después navegó hacia atrás (`previous()`/`goTo()`) para revisar o
+   * agregar evidencia a un step anterior, `next()` sigue avanzando
+   * normalmente desde ahí — `status` puede quedar en `'completed'` durante
+   * ese recorrido (ya se completó la sesión al menos una vez) sin que eso
+   * bloquee volver a moverse hacia adelante.
    */
   next(): Promise<SessionState>;
 

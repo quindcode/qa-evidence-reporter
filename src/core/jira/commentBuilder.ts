@@ -21,33 +21,32 @@ export interface AdfDocument {
  * demasiado granular para un comentario de Jira y ya vive en el `.zip`
  * adjunto), seguido de un resumen con el % de aprobado/fallado/omitido.
  *
- * Decisión de diseño (% sobre STEPS, no sobre scenarios): la primera
- * versión de este builder calculaba el resumen sobre el total de
- * scenarios, para que coincidiera con la granularidad de la lista de
- * arriba — pero eso deja un número distinto al que ya muestra el dashboard
- * del reporte HTML (`buildResultSummary` en `reportGenerator.ts`, que
- * SIEMPRE calculó este % sobre steps), confundiendo a quien compara ambos.
- * Se prioriza que las dos superficies (reporte HTML y comentario de Jira)
- * muestren SIEMPRE el mismo número sobre la MISMA base de cálculo, aunque
- * eso signifique que no coincida 1:1 con la cantidad de scenarios listados
- * arriba (un scenario con 3 steps pesa más que uno con 1 solo step).
+ * Decisión de diseño (% sobre SCENARIOS, no sobre steps): mismo criterio
+ * que `buildReportData` (`core/report/reportGenerator.ts`) — un scenario
+ * con, por ejemplo, 2 steps pass y 1 skip deriva a "skip" como caso de
+ * prueba completo, pero si se contaran los 3 steps sueltos esos 2 pass
+ * igual sumarían al total de aprobados, inflando el % aunque ESE scenario
+ * no haya pasado. Contar por scenario (cada uno pesa 1, con su resultado
+ * final) es también lo que hace que este número SIEMPRE coincida con el
+ * que ya muestra el dashboard del reporte HTML — ambas superficies deben
+ * mostrar el mismo % sobre la misma base de cálculo.
  */
 export function buildQaSummaryComment(state: SessionState): AdfDocument {
   const content: unknown[] = [];
-  const stepResults: StepResult[] = [];
+  const scenarioResults: StepResult[] = [];
 
   for (const feature of state.selectedFeatures) {
     content.push(heading(feature.name));
     const items = feature.scenarios.map((scenario) => {
       const result = deriveScenarioResult(scenario);
-      for (const step of scenario.steps) stepResults.push(step.result);
+      scenarioResults.push(result);
       return listItem(`${scenario.name} — ${RESULT_LABELS[result]}`);
     });
     content.push(bulletList(items));
   }
 
   content.push(heading('Resumen'));
-  content.push(bulletList(buildSummaryItems(stepResults)));
+  content.push(bulletList(buildSummaryItems(scenarioResults)));
 
   return { type: 'doc', version: 1, content };
 }

@@ -168,3 +168,25 @@ export function getCurrentStepFromSession(session: SessionState): CurrentStepInf
   if (!feature || !scenario || !step) return null;
   return { featureId: feature.id, scenarioId: scenario.id, step };
 }
+
+/**
+ * `true` si `session.currentPosition` apunta al último step del último
+ * scenario de la última feature seleccionada — es decir, no hay a dónde
+ * avanzar con `POST /api/session/navigate` (`{ direction: "next" }`, ver
+ * `adjacentPosition` en `core/session/sessionEngine.ts`, la fuente real de
+ * este mismo cálculo del lado del server). El runner (`Runner.tsx`) usa
+ * esto para OCULTAR el botón "Siguiente" en vez de solo deshabilitarlo: en
+ * ese step no hay nada más a lo que avanzar, mostrar un botón que no lleva
+ * a ningún lado es confuso.
+ */
+export function isLastStepInSession(session: SessionState): boolean {
+  const { featureIndex, scenarioIndex, stepIndex } = session.currentPosition;
+  const feature = session.selectedFeatures[featureIndex];
+  const scenario = feature?.scenarios[scenarioIndex];
+  if (!feature || !scenario) return false;
+
+  const isLastFeature = featureIndex === session.selectedFeatures.length - 1;
+  const isLastScenario = scenarioIndex === feature.scenarios.length - 1;
+  const isLastStep = stepIndex === scenario.steps.length - 1;
+  return isLastFeature && isLastScenario && isLastStep;
+}
