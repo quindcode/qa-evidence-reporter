@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { Jimp } from 'jimp';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { QaConfigSchema } from '../../core/types/config.js';
 import type { QaConfig } from '../../core/types/config.js';
@@ -33,6 +33,7 @@ async function buildContext(
   projectRoot: string,
   overrides: Partial<QaConfig> = {},
   brandingLogoAbsolutePath: string | null = null,
+  jiraApiToken: string | undefined = undefined,
 ): Promise<ServerContext> {
   const featuresDir = join(projectRoot, 'features');
   const evidenceBaseDir = join(projectRoot, 'evidence');
@@ -56,6 +57,7 @@ async function buildContext(
     reportsDir,
     templateDir: DEFAULT_TEMPLATE_DIR,
     brandingLogoAbsolutePath,
+    jiraApiToken,
   };
 }
 
@@ -80,6 +82,31 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(response.body.features[0].name).toContain('Inicio de sesión');
     expect(response.body.session).toEqual({ exists: false });
     expect(response.body.projectName).toBe('Proyecto de prueba');
+    expect(response.body.jira).toEqual({ enabled: false });
+  });
+
+  it('GET /api/features con jira.baseUrl y jira.email configurados: jira.enabled es true', async () => {
+    const app = createApp(
+      await buildContext(projectRoot, {
+        jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
+      }),
+    );
+
+    const response = await request(app).get('/api/features').expect(200);
+
+    expect(response.body.jira).toEqual({ enabled: true });
+  });
+
+  it('GET /api/features con solo jira.baseUrl (sin email): jira.enabled sigue false', async () => {
+    const app = createApp(
+      await buildContext(projectRoot, {
+        jira: { baseUrl: 'https://tuempresa.atlassian.net' },
+      }),
+    );
+
+    const response = await request(app).get('/api/features').expect(200);
+
+    expect(response.body.jira).toEqual({ enabled: false });
   });
 
   describe('branding', () => {
@@ -284,6 +311,34 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(zipBuffer.subarray(0, 2).toString('latin1')).toBe('PK');
   }, 15_000);
 
+  it('preserva nombres de archivo con tildes/ñ (multer decodifica el filename multipart como latin1 por defecto; se re-decodifica a utf-8)', async () => {
+    const context = await buildContext(projectRoot);
+    const app = createApp(context);
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const pngBuffer = await makePngBuffer();
+    const accentedFilename = 'Ensamble pistón y biela.png';
+    const evidenceResponse = await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', pngBuffer, accentedFilename)
+      .expect(201);
+
+    const evidenceFile = evidenceResponse.body.evidenceFiles[0];
+    expect(evidenceFile.originalFilename).toBe(accentedFilename);
+
+    // El archivo físico en disco también debe llevar el nombre correcto,
+    // no la versión mojibake ("pistÃ³n") — evidenceStore.save() usa
+    // originalFilename tal cual para nombrar el archivo.
+    const physicalPath = join(context.evidenceBaseDir, evidenceFile.path);
+    expect(existsSync(physicalPath)).toBe(true);
+    expect(physicalPath).toContain(accentedFilename);
+  });
+
   it('DELETE evidencia la quita de la lista del step Y borra el archivo físico (+ thumbnail)', async () => {
     const context = await buildContext(projectRoot);
     const app = createApp(context);
@@ -324,13 +379,13 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(existsSync(thumbnailPath)).toBe(false);
 
     // Y no reaparece al refrescar la lista (el flujo real que la UI dispara tras un delete).
-    const listAfterDelete = await request(app).get(`/api/session/step/${stepId}/evidence`).expect(200);
+    const listAfterDelete = await request(app)
+      .get(`/api/session/step/${stepId}/evidence`)
+      .expect(200);
     expect(listAfterDelete.body.evidenceFiles).toEqual([]);
 
     // DELETE repetido sobre el mismo id (ya borrado) no debe fallar (idempotente).
-    await request(app)
-      .delete(`/api/session/step/${stepId}/evidence/${evidenceId}`)
-      .expect(200);
+    await request(app).delete(`/api/session/step/${stepId}/evidence/${evidenceId}`).expect(200);
   });
 
   it('GET evidencia de un step devuelve metadata completa (kind, thumbnailPath, sizeBytes)', async () => {
@@ -638,6 +693,217 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     const response = await request(app).get('/api/report/export-zip').expect(404);
 
     expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
+  });
+
+  describe('POST /api/report/publish-jira', () => {
+    const JIRA_CONFIG_OVERRIDE = {
+      jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** Selecciona "login.feature", marca AMBOS steps del scenario como pass, y genera el reporte — deja `context.reportsDir` con un `index.html` real. */
+    async function selectAndGenerateReport(app: ReturnType<typeof createApp>): Promise<void> {
+      const selectResponse = await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+      const firstStepId: string = selectResponse.body.currentStep.step.id;
+      await request(app)
+        .post(`/api/session/step/${firstStepId}/result`)
+        .send({ result: 'pass' })
+        .expect(200);
+
+      const navigateResponse = await request(app)
+        .post('/api/session/navigate')
+        .send({ direction: 'next' })
+        .expect(200);
+      const secondStepId: string = navigateResponse.body.currentStep.step.id;
+      await request(app)
+        .post(`/api/session/step/${secondStepId}/result`)
+        .send({ result: 'pass' })
+        .expect(200);
+
+      await request(app).post('/api/report/generate').expect(201);
+    }
+
+    it('sin reporte generado -> 404 NO_REPORT_GENERATED, sin llamar a Jira', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+
+      const response = await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-1' })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('sin "issueKey" en el body -> 400 INVALID_REQUEST_BODY', async () => {
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app).post('/api/report/publish-jira').send({}).expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_REQUEST_BODY');
+    });
+
+    it('Jira no configurado (sin baseUrl/email) -> 404 JIRA_NOT_CONFIGURED, sin llamar a fetch', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(await buildContext(projectRoot));
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-1' })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('JIRA_NOT_CONFIGURED');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('publica exitosamente -> 201 + {issueKey, issueUrl}, con la URL/body correctos hacia Jira', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => '',
+        json: async () => ({ fields: { attachment: [] } }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-42' })
+        .expect(201);
+
+      expect(response.body).toEqual({
+        issueKey: 'QA-42',
+        issueUrl: 'https://tuempresa.atlassian.net/browse/QA-42',
+      });
+      // 1) GET de chequeo de adjuntos duplicados, 2) POST del adjunto, 3) POST del comentario.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const [listUrl] = fetchMock.mock.calls[0] as [string];
+      expect(listUrl).toBe(
+        'https://tuempresa.atlassian.net/rest/api/3/issue/QA-42?fields=attachment',
+      );
+
+      const [attachUrl] = fetchMock.mock.calls[1] as [string];
+      expect(attachUrl).toBe('https://tuempresa.atlassian.net/rest/api/3/issue/QA-42/attachments');
+
+      const [commentUrl, commentInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+      expect(commentUrl).toBe('https://tuempresa.atlassian.net/rest/api/3/issue/QA-42/comment');
+      const commentBody = JSON.parse(commentInit.body as string) as {
+        body: { content: unknown[] };
+      };
+      const commentText = JSON.stringify(commentBody.body.content);
+      expect(commentText).toContain('Inicio de sesión');
+      expect(commentText).toContain('Login exitoso — Aprobado');
+      expect(commentText).toContain('Aprobado: 100% (1/1)');
+    });
+
+    it('si el issue ya tiene un "qa-report.zip" adjunto, lo borra antes de subir el nuevo', async () => {
+      const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+        if (init.method === 'GET') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({
+              fields: { attachment: [{ id: '10001', filename: 'qa-report.zip' }] },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, text: async () => '' });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+      await selectAndGenerateReport(app);
+
+      await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-42' })
+        .expect(201);
+
+      const deleteCalls = fetchMock.mock.calls.filter(
+        ([, init]: [string, RequestInit]) => init.method === 'DELETE',
+      );
+      expect(deleteCalls).toHaveLength(1);
+      const [deleteUrl] = deleteCalls[0] as [string, RequestInit];
+      expect(deleteUrl).toBe('https://tuempresa.atlassian.net/rest/api/3/attachment/10001');
+    });
+
+    it('si el adjunto sube pero "addComment" falla, el request completo falla (mismo criterio que cualquier error de Jira)', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => '',
+          json: async () => ({ fields: { attachment: [] } }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '' })
+        .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'boom' });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-42' })
+        .expect(502);
+
+      expect(response.body.error.code).toBe('JIRA_REQUEST_ERROR');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('Jira responde 404 (issue inexistente) -> 404 JIRA_ISSUE_NOT_FOUND', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, text: async () => '' });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-404' })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('JIRA_ISSUE_NOT_FOUND');
+    });
+
+    it('Jira responde 401 (credenciales inválidas) -> 502 JIRA_AUTHENTICATION_ERROR', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => '' });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, JIRA_CONFIG_OVERRIDE, null, 'un-token'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-jira')
+        .send({ issueKey: 'QA-1' })
+        .expect(502);
+
+      expect(response.body.error.code).toBe('JIRA_AUTHENTICATION_ERROR');
+    });
   });
 
   it('regenerar el reporte sobre la MISMA URL refleja notas/evidencia nuevas, sin caché de por medio', async () => {

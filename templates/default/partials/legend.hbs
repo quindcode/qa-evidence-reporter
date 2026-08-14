@@ -1,6 +1,25 @@
-<ul class="qa-legend">
-  <li><span class="qa-swatch qa-swatch--pass" aria-hidden="true"></span> Aprobados: {{summary.pass}} ({{percentOf summary.pass summary.total}}%)</li>
-  <li><span class="qa-swatch qa-swatch--fail" aria-hidden="true"></span> Fallidos: {{summary.fail}} ({{percentOf summary.fail summary.total}}%)</li>
-  <li><span class="qa-swatch qa-swatch--skip" aria-hidden="true"></span> Omitidos: {{summary.skip}} ({{percentOf summary.skip summary.total}}%)</li>
-  <li><span class="qa-swatch qa-swatch--pending" aria-hidden="true"></span> Pendientes: {{summary.pending}} ({{percentOf summary.pending summary.total}}%)</li>
+{{!--
+  Distribución de resultados como chips tono-sobre-tono (mismo lenguaje
+  visual que `.qa-badge`, ver partials/badge.hbs y styles.hbs) en vez de una
+  lista plana de punto+texto — cada chip es su propia mini tarjeta con el
+  conteo real como protagonista, no una leyenda de gráfico como
+  afterthought. Recibe `summary` (ver core/types/report.ts, ResultSummary).
+--}}
+<ul class="qa-stats">
+  <li class="qa-stat qa-stat--pass">
+    <span class="qa-stat__count">{{summary.pass}}</span>
+    <span class="qa-stat__label">Aprobados <span class="qa-stat__percent">{{percentOf summary.pass summary.total}}%</span></span>
+  </li>
+  <li class="qa-stat qa-stat--fail">
+    <span class="qa-stat__count">{{summary.fail}}</span>
+    <span class="qa-stat__label">Fallidos <span class="qa-stat__percent">{{percentOf summary.fail summary.total}}%</span></span>
+  </li>
+  <li class="qa-stat qa-stat--skip">
+    <span class="qa-stat__count">{{summary.skip}}</span>
+    <span class="qa-stat__label">Omitidos <span class="qa-stat__percent">{{percentOf summary.skip summary.total}}%</span></span>
+  </li>
+  <li class="qa-stat qa-stat--pending">
+    <span class="qa-stat__count">{{summary.pending}}</span>
+    <span class="qa-stat__label">Pendientes <span class="qa-stat__percent">{{percentOf summary.pending summary.total}}%</span></span>
+  </li>
 </ul>

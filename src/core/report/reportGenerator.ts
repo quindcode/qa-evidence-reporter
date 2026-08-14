@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 
 import { createEvidenceStore } from '../evidence/index.js';
@@ -121,6 +121,19 @@ export function createReportGenerator(
 
     try {
       const evidenceStore = createEvidenceStore(config.evidenceBaseDir);
+
+      // `generate()` reescribe TODO el output de un run anterior, no lo
+      // fusiona con el nuevo — ver README, "Qué NO hacer": "generar uno
+      // nuevo sobreescribe reports/". Sin este borrado, una corrida previa
+      // con más features seleccionadas dejaba sus páginas de detalle
+      // (`features/*.html`) y evidencia copiada huérfanas: no referenciadas
+      // por el `index.html` nuevo, pero físicamente presentes en el mismo
+      // directorio que se comparte/zippea como "el reporte" — dos sistemas
+      // visuales (uno viejo, uno nuevo) conviviendo en el mismo entregable
+      // si el template cambió entre corridas. Se borra ANTES de reconstruir
+      // para que ningún archivo pueda sobrevivir a la sesión que lo generó.
+      await rm(join(outputDir, 'features'), { recursive: true, force: true });
+      await rm(join(outputDir, 'assets'), { recursive: true, force: true });
 
       await mkdir(outputDir, { recursive: true });
       await mkdir(join(outputDir, 'assets', 'evidence'), { recursive: true });
@@ -318,6 +331,7 @@ function toFeatureView(
     summary: buildResultSummary(counts),
     scenarios,
     detailPath: `features/${feature.id}.html`,
+    firstFailedScenarioId: scenarios.find((scenario) => scenario.result === 'fail')?.id,
   };
 }
 
@@ -396,12 +410,34 @@ async function buildReportData(
       // Tamaño reducido respecto al default (220px): en el rediseño del
       // dashboard el protagonista es el % en texto grande (`.qa-hero__number`,
       // ver templates/default/index.hbs) — el donut queda como visual de
-      // acompañamiento, no como el elemento principal.
-      distributionDonutSvg: renderDonutChart(summary, { size: 168, strokeWidth: 24 }),
-      progressBarSvg: renderProgressBar(summary.completionPercent),
+      // acompañamiento, no como el elemento principal. `showCenterLabel`
+      // solo se activa sin datos ("Sin datos" no repite nada); con datos
+      // reales el hero grande de al lado ya es ese mismo número, así que el
+      // centro del anillo se deja limpio en vez de duplicarlo.
+      distributionDonutSvg: renderDonutChart(summary, {
+        size: 200,
+        strokeWidth: 30,
+        showCenterLabel: summary.total === 0,
+      }),
+      // Altura reducida respecto al default (28px): sin texto embebido (ver
+      // JSDoc de `renderProgressBar`), un track más fino lee como un
+      // indicador de progreso, no como una segunda etiqueta de porcentaje.
+      progressBarSvg: renderProgressBar(summary.completionPercent, { height: 14 }),
     },
     features,
+    firstFailureHref: buildFirstFailureHref(features),
   };
+}
+
+/**
+ * `detailPath` del primer feature fallido + ancla a su primer scenario
+ * fallido (ver `FeatureReportView.firstFailedScenarioId`), o `undefined` si
+ * nada falló en toda la sesión. Ver `ReportData.firstFailureHref`.
+ */
+function buildFirstFailureHref(features: FeatureReportView[]): string | undefined {
+  const feature = features.find((candidate) => candidate.firstFailedScenarioId);
+  if (!feature?.firstFailedScenarioId) return undefined;
+  return `${feature.detailPath}#scenario-${feature.firstFailedScenarioId}`;
 }
 
 /** Carpeta (relativa a `outputDir`) donde queda copiado el logo de marca, si hay uno configurado. */

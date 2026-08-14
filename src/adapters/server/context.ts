@@ -38,6 +38,15 @@ export interface ServerContext {
   templateDir: string;
   /** Ruta absoluta al logo de marca (`config.branding.logoPath` resuelto), o `null` si no hay logo configurado. */
   brandingLogoAbsolutePath: string | null;
+  /**
+   * Token de API de Jira Cloud, leído de la variable de entorno
+   * `JIRA_API_TOKEN` — NUNCA de `qa-config.json` (ver `JiraConfigSchema` en
+   * `core/types/config.ts`, que deliberadamente no tiene un campo para
+   * esto). `undefined` si la variable no está seteada; `JiraClient`
+   * (`core/jira`) recién valida su ausencia cuando se intenta publicar de
+   * verdad, no acá.
+   */
+  jiraApiToken: string | undefined;
 }
 
 export interface BuildServerContextDeps {
@@ -80,5 +89,6 @@ export async function buildServerContext(
     brandingLogoAbsolutePath: config.branding.logoPath
       ? resolve(projectRoot, config.branding.logoPath)
       : null,
+    jiraApiToken: process.env.JIRA_API_TOKEN,
   };
 }

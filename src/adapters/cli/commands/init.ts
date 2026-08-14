@@ -146,6 +146,31 @@ export async function runInit(
  * `qa-config.json` a mano por fuera de `init` (o quiera desactivarlo
  * editando el archivo después) — el default a nivel de librería no cambió,
  * solo lo que este comando de CLI decide escribir.
+ *
+ * Decisión de diseño (`jira` siempre presente, con `baseUrl`/`email` en
+ * `null`): JSON no soporta comentarios, así que no hay forma de dejar este
+ * bloque "comentado" dentro de un `.json` real sin romper el `JSON.parse`
+ * estricto de `configLoader.ts` en cuanto alguien corra `run`/`report` sin
+ * tocarlo. Escribir el bloque ya presente pero con ambos valores en `null`
+ * (que `JiraConfigSchema` interpreta como "integración desactivada", ver
+ * `core/types/config.ts`) logra el mismo resultado práctico sin arriesgar
+ * un archivo inválido: para activarlo, alcanza con reemplazar los dos
+ * `null` por los valores reales (ver `## Integración con Jira Cloud` en el
+ * README) — no hace falta escribir la estructura desde cero.
+ *
+ * Decisión de diseño (`jira._ejemplo`): campo puramente documental, no
+ * forma parte de `JiraConfigSchema` — `z.object()` de Zod descarta claves
+ * desconocidas al parsear (mismo criterio que ya aplica a `"$schema"`, ver
+ * JSDoc de `QaConfigSchema`), así que `_ejemplo` nunca activa la
+ * integración ni rompe la validación. Existe solo para que quien mire el
+ * archivo vea la FORMA de un `baseUrl`/`email` reales sin tener que ir al
+ * README. `email` usa el dominio real de la empresa (`@quind.io` — todo el
+ * equipo lo comparte, a diferencia de `baseUrl`, que sí varía por
+ * proyecto/cliente y por eso queda como placeholder genérico
+ * `tuempresa.atlassian.net`); la parte local (`tu-email`) sigue siendo
+ * genérica, nunca la cuenta real de una persona puntual: `init` scaffolds
+ * proyectos para cualquier QA del equipo, no solo para quien lo pidió esta
+ * vez.
  */
 function buildConfigFileContents(projectName: string): string {
   const config = {
@@ -165,6 +190,14 @@ function buildConfigFileContents(projectName: string): string {
       logoPath: BRANDING_LOGO_RELATIVE_PATH,
       ...DEFAULT_BRANDING,
     },
+    jira: {
+      baseUrl: null,
+      email: null,
+      _ejemplo: {
+        baseUrl: 'https://tuempresa.atlassian.net',
+        email: 'tu-email@quind.io',
+      },
+    },
     reportTemplate: null,
   };
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -181,7 +214,10 @@ function printNextSteps(
   print('Próximos pasos:');
   print(
     `  1. Revisá "${relativeConfigPath}" (nombre del equipo, puertos, formatos de evidencia permitidos, etc.). ` +
-      'El branding (logo + colores estándar de Quind) ya viene configurado — no hace falta tocarlo.',
+      'El branding (logo + colores estándar de Quind) ya viene configurado — no hace falta tocarlo. ' +
+      'El bloque "jira" queda con baseUrl/email en null (integración desactivada) — completalo ' +
+      'con tus valores reales (mismo formato que "jira._ejemplo", que podés borrar) solo si vas ' +
+      'a publicar reportes a Jira Cloud (ver "Integración con Jira Cloud" en el README).',
   );
   print('  2. Agregá tus archivos .feature en "features/" (o editá/borrá el ejemplo incluido).');
   print(

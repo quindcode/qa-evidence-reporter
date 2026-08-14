@@ -13,3 +13,8 @@ sample-project/reports/
 # Config local de Claude Code (permisos de este usuario/sesión, no es parte
 # del proyecto compartido).
 .claude/settings.local.json
+
+# Estado local de la skill "impeccable" (cache de hooks, consentimiento,
+# reportes de crítica generados al vuelo) — específico de esta máquina/
+# sesión, no es parte del proyecto compartido.
+.impeccable/

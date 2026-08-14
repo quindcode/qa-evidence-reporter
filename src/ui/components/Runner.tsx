@@ -18,6 +18,8 @@ export interface RunnerProps {
   onError: (error: ApiRequestError) => void;
   /** Llamado después de `POST /api/session/close` exitoso — el caller (`App.tsx`) vuelve a la pantalla de selección. */
   onSessionClosed: () => void;
+  /** `GET /api/features` -> `jira.enabled` (ver `App.tsx`) — si es `false`, el botón "Adjuntar a Jira" del panel de reporte no se muestra en absoluto. */
+  jiraEnabled: boolean;
 }
 
 const STEP_KEYWORD_LABEL: Record<string, string> = {
@@ -37,6 +39,7 @@ export function Runner({
   onSessionUpdate,
   onError,
   onSessionClosed,
+  jiraEnabled,
 }: RunnerProps): JSX.Element {
   const [evidenceFiles, setEvidenceFiles] = useState<EvidenceFile[]>([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
@@ -45,6 +48,8 @@ export function Runner({
   const [notes, setNotes] = useState('');
   const [defectDescription, setDefectDescription] = useState('');
   const [reportUrl, setReportUrl] = useState<string | null>(null);
+  const [jiraIssueKey, setJiraIssueKey] = useState('');
+  const [jiraPublishedUrl, setJiraPublishedUrl] = useState<string | null>(null);
   const defectFieldRef = useRef<HTMLTextAreaElement>(null);
 
   const stepId = currentStep?.step.id;
@@ -181,6 +186,19 @@ export function Runner({
     try {
       const response = await api.generateReport();
       setReportUrl(response.reportUrl);
+    } catch (error) {
+      onError(error as ApiRequestError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePublishToJira(): Promise<void> {
+    if (busy || jiraIssueKey.trim().length === 0) return;
+    setBusy(true);
+    try {
+      const response = await api.publishToJira(jiraIssueKey.trim());
+      setJiraPublishedUrl(response.issueUrl);
     } catch (error) {
       onError(error as ApiRequestError);
     } finally {
@@ -330,9 +348,45 @@ export function Runner({
                 <a class="button" href={reportUrl} target="_blank" rel="noreferrer">
                   Ver reporte
                 </a>
-                <a class="button button--cta" href="/api/report/export-zip" download="qa-report.zip">
+                <a
+                  class="button button--cta"
+                  href="/api/report/export-zip"
+                  download="qa-report.zip"
+                >
                   Exportar como ZIP
                 </a>
+              </>
+            )}
+            {reportUrl && jiraEnabled && (
+              <>
+                <input
+                  type="text"
+                  class="field__input"
+                  style={{ maxWidth: '10rem' }}
+                  placeholder="Clave del issue (ej. QA-123)"
+                  value={jiraIssueKey}
+                  onInput={(event) => setJiraIssueKey((event.target as HTMLInputElement).value)}
+                  disabled={busy}
+                  aria-label="Clave del issue de Jira"
+                />
+                <button
+                  type="button"
+                  class="button"
+                  onClick={() => void handlePublishToJira()}
+                  disabled={busy || jiraIssueKey.trim().length === 0}
+                >
+                  Adjuntar a Jira
+                </button>
+                {jiraPublishedUrl && (
+                  <a
+                    class="button button--cta"
+                    href={jiraPublishedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Ver issue en Jira
+                  </a>
+                )}
               </>
             )}
             <button

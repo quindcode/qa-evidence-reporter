@@ -3,20 +3,28 @@ import { join } from 'node:path';
 import { ZipArchive, type ArchiverError } from 'archiver';
 import { Router } from 'express';
 
+import { buildQaSummaryComment } from '../../../core/jira/index.js';
 import {
   createHandlebarsTemplateEngine,
   createReportGenerator,
 } from '../../../core/report/index.js';
 import { QaError } from '../../../core/types/errors.js';
 import type { ServerContext } from '../context.js';
-import { NOTHING_TO_REPORT, NO_REPORT_GENERATED, asyncHandler } from '../errors.js';
+import {
+  INVALID_REQUEST_BODY,
+  NOTHING_TO_REPORT,
+  NO_REPORT_GENERATED,
+  asyncHandler,
+} from '../errors.js';
 import { pathExists } from '../fsUtils.js';
+import { buildReportZipBuffer } from '../reportZip.js';
 import { REPORTS_STATIC_PREFIX } from '../staticPrefixes.js';
 import { loadCurrentSessionOrNull } from '../sessionQueries.js';
 import type { CoreServices } from '../services.js';
 
 /**
- * `POST /api/report/generate` + `GET /api/report/export-zip`.
+ * `POST /api/report/generate` + `GET /api/report/export-zip` +
+ * `POST /api/report/publish-jira`.
  *
  * Decisión de diseño (`reportUrl` relativo): la respuesta de `generate`
  * nunca devuelve una ruta absoluta del filesystem del server (irrelevante e
@@ -99,6 +107,46 @@ export function createReportRouter(context: ServerContext, services: CoreService
       archive.pipe(res);
       archive.directory(context.reportsDir, false);
       await archive.finalize().catch(next);
+    }),
+  );
+
+  router.post(
+    '/report/publish-jira',
+    asyncHandler(async (req, res) => {
+      const issueKey = req.body?.issueKey;
+      if (typeof issueKey !== 'string' || issueKey.trim().length === 0) {
+        throw new QaError('El campo "issueKey" es obligatorio.', INVALID_REQUEST_BODY);
+      }
+
+      const indexPath = join(context.reportsDir, 'index.html');
+      if (!(await pathExists(indexPath))) {
+        throw new QaError(
+          'Todavía no se generó ningún reporte — llamá primero a "POST /api/report/generate".',
+          NO_REPORT_GENERATED,
+        );
+      }
+
+      const trimmedIssueKey = issueKey.trim();
+      const zipBuffer = await buildReportZipBuffer(context.reportsDir);
+      const { issueUrl } = await services.jiraClient.attachReport(
+        trimmedIssueKey,
+        zipBuffer,
+        'qa-report.zip',
+      );
+
+      // Sin sesión guardada (caso raro: se cerró después de generar el
+      // reporte) no hay de dónde sacar el resumen de scenarios — el adjunto
+      // ya subió, así que igual respondemos éxito, solo sin comentario. Si
+      // SÍ hay sesión pero `addComment` falla (red, credenciales, etc.), el
+      // error se propaga y el request completo falla, mismo criterio que
+      // cualquier otro fallo de `attachReport`.
+      const session = await loadCurrentSessionOrNull(services.sessionEngine);
+      if (session) {
+        await services.jiraClient.addComment(trimmedIssueKey, buildQaSummaryComment(session));
+      }
+
+      context.logger.info('Reporte adjuntado a Jira', { issueKey: trimmedIssueKey });
+      res.status(201).json({ issueKey: trimmedIssueKey, issueUrl });
     }),
   );
 

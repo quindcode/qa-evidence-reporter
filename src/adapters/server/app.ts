@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import express, { type Express, type Response } from 'express';
 
 import { createEvidenceStore } from '../../core/evidence/index.js';
+import { createJiraClient } from '../../core/jira/index.js';
 import { createGherkinParser } from '../../core/parser/index.js';
 import { createSessionEngine } from '../../core/session/index.js';
 import type { ServerContext } from './context.js';
@@ -23,9 +24,9 @@ import { UI_DIST_DIR, UI_NOT_BUILT_PLACEHOLDER_HTML } from './uiPaths.js';
  * devuelve el `Express` ya armado para que los tests de integración
  * (`app.test.ts`) puedan golpearlo con `supertest` sin un socket real.
  *
- * Decisión de diseño (`SessionEngine`/`EvidenceStore`/`GherkinParser`
- * construidos ACÁ, una sola vez, a partir de `context`, y no recibidos ya
- * construidos): mismo patrón que ya usan los comandos de `adapters/cli`
+ * Decisión de diseño (`SessionEngine`/`EvidenceStore`/`GherkinParser`/
+ * `JiraClient` construidos ACÁ, una sola vez, a partir de `context`, y no
+ * recibidos ya construidos): mismo patrón que ya usan los comandos de `adapters/cli`
  * (`run.ts`/`report.ts` construyen sus propias instancias a partir de rutas
  * resueltas) — `ServerContext` solo lleva configuración y rutas (fácil de
  * armar en un test con directorios temporales), y es este módulo el único
@@ -38,6 +39,11 @@ export function createApp(context: ServerContext): Express {
     gherkinParser: createGherkinParser({ logger: context.logger }),
     sessionEngine: createSessionEngine(context.sessionFilePath),
     evidenceStore: createEvidenceStore(context.evidenceBaseDir),
+    jiraClient: createJiraClient({
+      baseUrl: context.config.jira.baseUrl,
+      email: context.config.jira.email,
+      apiToken: context.jiraApiToken,
+    }),
   };
 
   const app = express();

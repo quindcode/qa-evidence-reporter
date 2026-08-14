@@ -37,6 +37,15 @@ export const RESULT_LABELS: Readonly<Record<StepResult, string>> = {
 /** Orden de dibujado/legend fijo, para que el resultado sea determinístico entre corridas (mismos conteos → mismo SVG byte a byte). */
 const RESULT_ORDER: readonly StepResult[] = ['pass', 'fail', 'skip', 'pending'];
 
+/**
+ * Espacio en blanco (en unidades del `viewBox`, independiente del tamaño)
+ * entre porciones adyacentes del donut, combinado con `stroke-linecap="round"`
+ * en cada porción — el anillo segmentado con extremos redondeados en vez de
+ * porciones que se tocan a tope. Exportado para que `charts.test.ts` pueda
+ * calcular la geometría esperada sin duplicar el número mágico.
+ */
+export const DONUT_SLICE_GAP_PX = 4;
+
 /** Color de la barra de progreso general. Reutiliza `RESULT_COLORS.pass` a propósito: "completado" es conceptualmente el mismo verde que "aprobado", y así no se introduce un quinto color sin documentar. */
 const PROGRESS_FILL_COLOR = RESULT_COLORS.pass;
 
@@ -45,6 +54,17 @@ export interface DonutChartOptions {
   size?: number;
   /** Grosor del anillo, en px. Default `32`. */
   strokeWidth?: number;
+  /**
+   * Si se dibuja el `%` de aprobación en el centro del anillo. Default
+   * `true`. El dashboard (único caller hoy, ver `reportGenerator.ts`) lo
+   * pasa en `false` cuando ya hay datos — ese mismo número ya es el
+   * protagonista tipográfico del hero (`.qa-hero__number`) justo al lado, y
+   * repetirlo en el centro del anillo era puro ruido redundante, no una
+   * segunda pieza de información. Con `total === 0` el caller sigue
+   * pidiendo el label (`true`), porque ahí el centro no repite nada: es el
+   * único lugar que dice "Sin datos".
+   */
+  showCenterLabel?: boolean;
 }
 
 /**
@@ -74,10 +94,16 @@ export interface DonutChartOptions {
  * Caso `total === 0` (sesión sin steps): se dibuja solo el aro de fondo
  * (sin porciones) y el centro muestra "Sin datos", en vez de dividir por
  * cero.
+ *
+ * Las porciones llevan un pequeño hueco (`DONUT_SLICE_GAP_PX`) entre sí y
+ * `stroke-linecap="round"` — un anillo segmentado con extremos redondeados
+ * en vez de porciones a tope, para que cada categoría se lea como una
+ * pieza propia incluso antes de mirar el color.
  */
 export function renderDonutChart(counts: ResultCounts, options: DonutChartOptions = {}): string {
   const size = options.size ?? 220;
   const strokeWidth = options.strokeWidth ?? 32;
+  const showCenterLabel = options.showCenterLabel ?? true;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
   const circumference = 2 * Math.PI * radius;
@@ -100,12 +126,14 @@ export function renderDonutChart(counts: ResultCounts, options: DonutChartOption
       const dashLength = fraction * circumference;
       const dashOffset = cumulativeFraction * circumference;
       cumulativeFraction += fraction;
+      const visibleLength = Math.max(0, dashLength - DONUT_SLICE_GAP_PX);
+      const visibleOffset = dashOffset + DONUT_SLICE_GAP_PX / 2;
 
       return (
         `<circle cx="${center}" cy="${center}" r="${radius}" fill="none" ` +
-        `stroke="${RESULT_COLORS[key]}" stroke-width="${strokeWidth}" ` +
-        `stroke-dasharray="${round(dashLength)} ${round(circumference - dashLength)}" ` +
-        `stroke-dashoffset="${round(-dashOffset)}" ` +
+        `stroke="${RESULT_COLORS[key]}" stroke-width="${strokeWidth}" stroke-linecap="round" ` +
+        `stroke-dasharray="${round(visibleLength)} ${round(circumference - visibleLength)}" ` +
+        `stroke-dashoffset="${round(-visibleOffset)}" ` +
         `data-result="${key}" data-value="${value}" data-percent="${percentOf(value, total)}">` +
         `<title>${escapeXml(RESULT_LABELS[key])}: ${value} (${percentOf(value, total)}%)</title>` +
         `</circle>`
@@ -114,13 +142,16 @@ export function renderDonutChart(counts: ResultCounts, options: DonutChartOption
     .join('');
 
   const centerLabel = total === 0 ? 'Sin datos' : `${percentOf(counts.pass, total)}%`;
+  const centerText = showCenterLabel
+    ? `<text x="${center}" y="${center}" text-anchor="middle" dominant-baseline="middle" font-size="${round(size * 0.16)}" font-weight="700" fill="currentColor">${escapeXml(centerLabel)}</text>`
+    : '';
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${escapeXml(ariaLabel)}">` +
     `<title>${escapeXml(ariaLabel)}</title>` +
     `<circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="currentColor" stroke-opacity="0.15" stroke-width="${strokeWidth}" data-role="track"></circle>` +
     `<g transform="rotate(-90 ${center} ${center})">${slices}</g>` +
-    `<text x="${center}" y="${center}" text-anchor="middle" dominant-baseline="middle" font-size="${round(size * 0.16)}" font-weight="700" fill="currentColor">${escapeXml(centerLabel)}</text>` +
+    centerText +
     `</svg>`
   );
 }
@@ -137,8 +168,18 @@ export interface ProgressBarOptions {
  * `'pending'`, ver `ResultSummary.completionPercent` en
  * `core/types/report.ts`), como string SVG autocontenido. Función pura,
  * mismas garantías de accesibilidad que `renderDonutChart` (`role="img"` +
- * `aria-label` + `<title>` + el porcentaje también como `<text>` visible,
- * nunca solo comunicado por el largo de la barra).
+ * `aria-label`, con el porcentaje en texto).
+ *
+ * Sin `<text>` visible dentro del SVG a propósito (a diferencia de una
+ * versión anterior): el único caller (`index.hbs`, dashboard) ya muestra el
+ * mismo porcentaje como texto real justo arriba de la barra
+ * (`.qa-progress-label strong`) — duplicarlo adentro era ruido, y ese texto
+ * embebido tampoco podía garantizar contraste consigo mismo: a color de
+ * relleno fijo (blanco) sobre una barra que, en porcentajes bajos, deja la
+ * mayor parte del ancho ocupada por el track claro/oscuro del tema, no por
+ * el relleno. Retirar el texto retira también ese riesgo de contraste sin
+ * perder el requisito de "el % siempre visible como texto, no solo como
+ * longitud de barra" — ese requisito lo sigue cumpliendo el label externo.
  *
  * `percentComplete` se clampea a `[0, 100]` — un caller que pase un valor
  * fuera de rango (p. ej. por un bug de redondeo previo) nunca produce una
@@ -160,7 +201,6 @@ export function renderProgressBar(
     `<title>${escapeXml(ariaLabel)}</title>` +
     `<rect x="0" y="0" width="${width}" height="${height}" rx="${cornerRadius}" ry="${cornerRadius}" fill="currentColor" fill-opacity="0.12" data-role="track"></rect>` +
     `<rect x="0" y="0" width="${filledWidth}" height="${height}" rx="${cornerRadius}" ry="${cornerRadius}" fill="${PROGRESS_FILL_COLOR}" data-role="fill" data-percent="${round(clamped)}"></rect>` +
-    `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" dominant-baseline="middle" font-size="${round(height * 0.55)}" font-weight="700" fill="#ffffff">${Math.round(clamped)}%</text>` +
     `</svg>`
   );
 }

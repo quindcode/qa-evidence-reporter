@@ -1,3 +1,4 @@
+import type { JiraClient } from '../../core/jira/index.js';
 import type { EvidenceStore } from '../../core/types/evidence.js';
 import type { GherkinParser } from '../../core/types/parser.js';
 import type { SessionEngine } from '../../core/types/session.js';
@@ -9,10 +10,13 @@ import type { SessionEngine } from '../../core/types/session.js';
  * instancia compartida: guarda su estado en una closure interna (ver
  * `core/session/sessionEngine.ts`), así que una instancia nueva por request
  * "olvidaría" cualquier sesión cargada/creada por un request anterior en
- * este mismo proceso.
+ * este mismo proceso. `JiraClient`, en cambio, no tiene estado propio —
+ * comparte la instancia por el mismo motivo práctico que las demás (un solo
+ * lugar donde se construye a partir de `context`), no porque lo necesite.
  */
 export interface CoreServices {
   gherkinParser: GherkinParser;
   sessionEngine: SessionEngine;
   evidenceStore: EvidenceStore;
+  jiraClient: JiraClient;
 }

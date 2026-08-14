@@ -91,6 +91,26 @@ const BrandingConfigSchema = z.object({
 });
 
 /**
+ * Integración opcional con Jira Cloud (fase 1 de la integración con
+ * gestores de proyecto — Azure DevOps queda para una fase futura, como
+ * módulo hermano, no una abstracción compartida prematura).
+ *
+ * Deliberadamente NO tiene un campo `apiToken`: el token de API nunca vive
+ * en `qa-config.json` (se versiona, es secreto) — sale de la variable de
+ * entorno `JIRA_API_TOKEN` en tiempo de ejecución (ver
+ * `adapters/server/context.ts`, `buildServerContext`). `email` sí vive
+ * acá: no es secreto, y junto con `baseUrl` es lo que determina si Jira
+ * está "configurado" (ambos no-`null`) — sin un campo `enabled` aparte que
+ * pudiera desincronizarse de los dos campos reales.
+ */
+const JiraConfigSchema = z.object({
+  /** URL base del sitio Jira Cloud, p. ej. "https://tuempresa.atlassian.net" (sin "/rest/..."). `null` = Jira no configurado. */
+  baseUrl: z.string().url().nullable().default(null),
+  /** Email de la cuenta Jira Cloud usada para autenticar (Basic auth junto al token) — no es secreto. */
+  email: z.string().email().nullable().default(null),
+});
+
+/**
  * Esquema completo de `qa-config.json`. Cualquier clave desconocida en el
  * JSON de entrada (p. ej. `"$schema"`, presente en el archivo que escribe
  * `init` como hint para el editor) se descarta silenciosamente al parsear
@@ -108,6 +128,7 @@ export const QaConfigSchema = z.object({
   evidence: EvidenceConfigSchema.prefault({}),
   logging: LoggingConfigSchema.prefault({}),
   branding: BrandingConfigSchema.prefault({}),
+  jira: JiraConfigSchema.prefault({}),
   /** Ruta a un `templateDir` custom, o `null` para usar el template embebido (`templates/default`) — ver `adapters/cli`. */
   reportTemplate: z.string().nullable().default(null),
 });

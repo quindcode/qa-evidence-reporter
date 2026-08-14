@@ -3,6 +3,7 @@ import type {
   CurrentStepInfo,
   EvidenceFile,
   FeatureSummary,
+  JiraFeatureConfig,
   SessionState,
   SessionSummary,
   StepResult,
@@ -73,6 +74,7 @@ export interface FeaturesResponse {
   session: SessionSummary;
   projectName: string;
   branding: Branding;
+  jira: JiraFeatureConfig;
 }
 
 export interface SessionResponse {
@@ -91,6 +93,11 @@ export interface EvidenceListResponse {
 
 export interface ReportGenerateResponse {
   reportUrl: string;
+}
+
+export interface JiraPublishResponse {
+  issueKey: string;
+  issueUrl: string;
 }
 
 /**
@@ -182,6 +189,14 @@ export const api = {
 
   generateReport(): Promise<ReportGenerateResponse> {
     return request<ReportGenerateResponse>('/api/report/generate', { method: 'POST' });
+  },
+
+  publishToJira(issueKey: string): Promise<JiraPublishResponse> {
+    return request<JiraPublishResponse>('/api/report/publish-jira', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issueKey }),
+    });
   },
 
   closeSession(): Promise<{ closed: true }> {

@@ -114,6 +114,16 @@ export interface Branding {
 }
 
 /**
+ * Forma de `GET /api/features` -> `jira` (ver `routes/features.ts`). Solo el
+ * booleano derivado de `qa-config.json` -> `jira.baseUrl`/`jira.email` —
+ * ninguno de los dos (ni el token, que nunca sale del server) se expone a la
+ * UI; alcanza con saber si mostrar o no el botón "Adjuntar a Jira".
+ */
+export interface JiraFeatureConfig {
+  enabled: boolean;
+}
+
+/**
  * Deriva el resultado de un scenario a partir de sus steps — misma tabla de
  * prioridad que `core/types/session.ts` (`deriveScenarioResult`,
  * `fail > pending > skip > pass`), duplicada acá por la misma razón que el

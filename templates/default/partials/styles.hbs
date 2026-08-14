@@ -29,6 +29,25 @@
     --qa-fail-bg: #fef2f2;
     --qa-skip-bg: #f4f4f5;
     --qa-pending-bg: #fffbeb;
+
+    /*
+     * Variante "sobre tinte" de cada color de estado, para texto/bordes que
+     * se apoyan en su propio `-bg` (badges, chips de stat, riel, callout de
+     * defecto) — DISTINTA de `--qa-pass`/etc. arriba, que debe seguir
+     * calzando EXACTO con `RESULT_COLORS` en `core/report/charts.ts` (ver
+     * comentario al principio de este archivo) y por eso no puede variar
+     * por tema. En claro, "sobre tinte" es el mismo valor que su base (el
+     * 700/800 original ya rinde ≥4.5:1 sobre blanco/gris claro). En oscuro
+     * (ver los 3 bloques de abajo) se aclara a un tono que sigue leyéndose
+     * como el mismo color, pero cumple contraste sobre superficies oscuras
+     * — la base sin aclarar cae tan bajo como 1.98:1 en el chip de
+     * "Omitidos" y 2.10–2.48:1 en el riel, medido contra sus propios
+     * fondos oscuros.
+     */
+    --qa-pass-on-tint: var(--qa-pass);
+    --qa-fail-on-tint: var(--qa-fail);
+    --qa-skip-on-tint: var(--qa-skip);
+    --qa-pending-on-tint: var(--qa-pending);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -44,6 +63,11 @@
       --qa-fail-bg: #2c1414;
       --qa-skip-bg: #26262a;
       --qa-pending-bg: #2b2110;
+
+      --qa-pass-on-tint: #4ade80;
+      --qa-fail-on-tint: #f87171;
+      --qa-skip-on-tint: #a8a8a8;
+      --qa-pending-on-tint: #fbbf24;
     }
   }
 
@@ -60,6 +84,10 @@
     --qa-fail-bg: #fef2f2;
     --qa-skip-bg: #f4f4f5;
     --qa-pending-bg: #fffbeb;
+    --qa-pass-on-tint: var(--qa-pass);
+    --qa-fail-on-tint: var(--qa-fail);
+    --qa-skip-on-tint: var(--qa-skip);
+    --qa-pending-on-tint: var(--qa-pending);
   }
 
   :root[data-theme='dark'] {
@@ -73,6 +101,10 @@
     --qa-fail-bg: #2c1414;
     --qa-skip-bg: #26262a;
     --qa-pending-bg: #2b2110;
+    --qa-pass-on-tint: #4ade80;
+    --qa-fail-on-tint: #f87171;
+    --qa-skip-on-tint: #a8a8a8;
+    --qa-pending-on-tint: #fbbf24;
   }
 
   * {
@@ -119,10 +151,59 @@
     color: var(--qa-link);
   }
 
+  /* Foco de teclado visible en todo elemento interactivo — antes de esta
+     pasada no había ningún `:focus-visible` propio, así que dependía
+     enteramente del outline por defecto del navegador sobre fondos de
+     tarjeta/tema oscuro propios, sin verificar. `:focus-visible` (no
+     `:focus`) para no mostrar el anillo en un click de mouse, solo en
+     navegación por teclado. */
+  a:focus-visible,
+  button:focus-visible,
+  video:focus-visible {
+    outline: 2px solid var(--qa-link);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Skip-link (ver partials/header.hbs, primer elemento del <body> en
+     ambas páginas): oculto fuera de pantalla hasta que recibe foco por
+     teclado, momento en el que se vuelve visible arriba a la izquierda —
+     deja saltar directo a `#qa-main` sin tabular por el header/logo/toggle
+     de tema en cada página. */
+  .qa-skip-link {
+    position: absolute;
+    top: -100%;
+    left: 12px;
+    z-index: 10;
+    padding: 10px 16px;
+    background: var(--qa-link);
+    color: #ffffff;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .qa-skip-link:focus-visible {
+    top: 12px;
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+  }
+
+  /* Ícono de trazo único compartido por todos los SVG inline del reporte
+     (chevrons, toggle de tema, alerta de defecto — ver partials/theme-icon.hbs,
+     chevron-right.hbs, chevron-left.hbs, icon-alert.hbs). `currentColor`
+     hace que cada uno herede el color de texto de quien lo incluya, así
+     este archivo no necesita una regla de color por ícono. */
+  .qa-icon {
+    display: inline-block;
+    vertical-align: -2px;
+    flex-shrink: 0;
+  }
+
   .qa-container {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 24px 20px 64px;
+    padding: 32px 20px 80px;
   }
 
   .qa-topbar {
@@ -131,39 +212,44 @@
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    margin-bottom: 28px;
+    margin-bottom: 36px;
   }
 
-  .qa-topbar h1 {
-    font-size: 1.6rem;
-    margin: 0.15rem 0 0;
-    letter-spacing: -0.01em;
-  }
-
-  /* Etiqueta pequeña arriba del título (ver partials/header.hbs) — enmarca
-     el documento como "esto es un reporte de ejecución", no decoración. */
-  .qa-eyebrow {
+  /* Sin eyebrow arriba del título (ver header.hbs): el <h1> es lo primero
+     que se lee en la página, así que lleva el peso completo de la
+     jerarquía — de ahí la escala más grande que un título de sección
+     cualquiera. Clase compartida entre las dos variantes de header (ver
+     header.hbs) en vez de un selector compuesto que nombre la variante de
+     marca: un test de integración verifica que, sin branding configurado,
+     el HTML generado no contenga ni el nombre de esa clase — así que
+     ninguna regla fuera del bloque condicional de branding, ni sus
+     comentarios, puede mencionarla. */
+  .qa-page-title {
+    font-size: clamp(1.5rem, 1.1rem + 1.8vw, 2.05rem);
     margin: 0;
-    font-size: 0.72rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    color: var(--qa-fg-muted);
+    letter-spacing: -0.015em;
+    line-height: 1.15;
   }
 
   .qa-meta {
+    margin: 8px 0 0;
     color: var(--qa-fg-muted);
-    font-size: 0.9rem;
+    font-size: 0.92rem;
   }
 
   .qa-theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
     border: 1px solid var(--qa-border);
     background: var(--qa-bg-elevated);
     color: var(--qa-fg);
     border-radius: 8px;
-    padding: 8px 14px;
+    padding: 8px 15px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
+    font-family: inherit;
   }
 
   .qa-theme-toggle:hover {
@@ -202,16 +288,16 @@
     .qa-brandbar {
       background: {{project.branding.primaryColor}};
       color: {{project.branding.primaryContrast}};
-      margin-bottom: 24px;
+      margin-bottom: 28px;
     }
 
     .qa-brandbar__inner {
       max-width: 1100px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 24px 20px;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 18px;
     }
 
     .qa-brand-logo {
@@ -224,17 +310,6 @@
     .qa-brandbar__text {
       flex: 1;
       min-width: 0;
-    }
-
-    .qa-brandbar__text h1 {
-      font-size: 1.6rem;
-      margin: 0.15rem 0 0;
-      letter-spacing: -0.01em;
-    }
-
-    .qa-eyebrow--onbrand {
-      color: {{project.branding.primaryContrast}};
-      opacity: 0.75;
     }
 
     .qa-meta--onbrand {
@@ -252,7 +327,7 @@
        con los 3 colores vivos de la marca, siempre en el mismo orden —
        reconocible de un vistazo sin necesidad de leer nada. */
     .qa-brand-stripe {
-      height: 4px;
+      height: 5px;
       background: linear-gradient(
         90deg,
         {{project.branding.accentColor}},
@@ -267,26 +342,47 @@
     border: 1px solid var(--qa-border);
     border-radius: 14px;
     padding: 28px;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
   }
 
   .qa-section-heading {
-    margin: 0 0 20px;
-    font-size: 1.05rem;
+    margin: 0 0 24px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+
+  /* Aclaración breve en lenguaje llano (Gherkin, Omitido vs. Pendiente) —
+     nunca un eyebrow arriba de un heading (ver Do's and Don'ts), siempre
+     texto de cuerpo secundario en su lugar natural: bajo el heading de
+     sección, o bajo los chips de stat. */
+  .qa-hint {
+    margin: 0 0 16px;
+    font-size: 0.82rem;
+    color: var(--qa-fg-muted);
+    line-height: 1.5;
+  }
+
+  /* Dentro de `.qa-hero__side` el espaciado ya lo da el `gap` del flex
+     container (ver más abajo) — un margin propio acá lo duplicaría. */
+  .qa-hero__side .qa-hint {
+    margin: 0;
   }
 
   /*
    * El "hero": el % de aprobación es el protagonista de todo el reporte —
    * lo primero que se lee, en la tipografía serif (ver `--qa-font-display`
-   * arriba). El donut queda como visual de acompañamiento, más chico que
-   * antes (ver `renderDonutChart(summary, { size: 168, ... })` en
-   * `reportGenerator.ts`) — ya no compite con el número por protagonismo.
+   * arriba). El donut queda como visual de acompañamiento — y, con datos
+   * reales, ya no repite el mismo número en su centro (ver
+   * `renderDonutChart(summary, { showCenterLabel: ... })` en
+   * `reportGenerator.ts`): duplicar el % dos veces a centímetros de
+   * distancia no sumaba jerarquía, competía con ella.
    */
   .qa-hero {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 36px;
+    gap: 44px;
   }
 
   .qa-hero__stat {
@@ -294,24 +390,47 @@
   }
 
   .qa-hero__number {
-    margin: 4px 0 0;
+    margin: 0;
     font-family: var(--qa-font-display);
-    font-size: 4.25rem;
+    font-size: clamp(3.25rem, 2.4rem + 4.2vw, 5.5rem);
     font-weight: 600;
     line-height: 1;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
   }
 
   .qa-hero__number span {
-    font-size: 2.25rem;
+    font-size: clamp(1.75rem, 1.4rem + 1.8vw, 2.5rem);
     font-weight: 500;
     opacity: 0.7;
   }
 
   .qa-hero__caption {
-    margin: 6px 0 0;
+    margin: 10px 0 0;
     color: var(--qa-fg-muted);
-    max-width: 22ch;
+    font-size: 0.95rem;
+    max-width: 28ch;
+  }
+
+  /* Salta directo al primer scenario fallido (ver `firstFailureHref`/
+     `firstFailedScenarioId` en reportGenerator.ts) en vez de depender solo
+     de scroll + rail-scanning — no aparece si no hay ningún fallo. */
+  .qa-jump-to-failure {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 6px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--qa-fail-on-tint);
+    background: var(--qa-fail-bg);
+    color: var(--qa-fail-on-tint);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .qa-jump-to-failure:hover {
+    filter: brightness(1.05);
   }
 
   .qa-hero__chart {
@@ -331,48 +450,73 @@
 
   .qa-hero__side {
     flex: 1;
-    min-width: 240px;
+    min-width: 260px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 20px;
   }
 
-  .qa-legend {
+  /* Distribución de resultados como chips tono-sobre-tono (ver
+     partials/legend.hbs) — mismo lenguaje visual que `.qa-badge`, pero como
+     mini tarjetas con el conteo real de protagonista en vez de una lista de
+     punto+texto. */
+  .qa-stats {
     list-style: none;
     margin: 0;
     padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .qa-stat {
     display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
+    align-items: baseline;
+    gap: 9px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid transparent;
   }
 
-  .qa-legend li {
+  .qa-stat__count {
+    font-family: var(--qa-font-display);
+    font-size: 1.3rem;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .qa-stat__label {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.88rem;
-    color: var(--qa-fg-muted);
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.78rem;
+    font-weight: 600;
   }
 
-  .qa-swatch {
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
-    display: inline-block;
-    flex-shrink: 0;
+  .qa-stat__percent {
+    font-size: 0.72rem;
+    font-weight: 500;
   }
 
-  .qa-swatch--pass {
-    background: var(--qa-pass);
+  .qa-stat--pass {
+    background: var(--qa-pass-bg);
+    color: var(--qa-pass-on-tint);
+    border-color: color-mix(in srgb, var(--qa-pass-on-tint) 28%, transparent);
   }
-  .qa-swatch--fail {
-    background: var(--qa-fail);
+  .qa-stat--fail {
+    background: var(--qa-fail-bg);
+    color: var(--qa-fail-on-tint);
+    border-color: color-mix(in srgb, var(--qa-fail-on-tint) 28%, transparent);
   }
-  .qa-swatch--skip {
-    background: var(--qa-skip);
+  .qa-stat--skip {
+    background: var(--qa-skip-bg);
+    color: var(--qa-skip-on-tint);
+    border-color: color-mix(in srgb, var(--qa-skip-on-tint) 28%, transparent);
   }
-  .qa-swatch--pending {
-    background: var(--qa-pending);
+  .qa-stat--pending {
+    background: var(--qa-pending-bg);
+    color: var(--qa-pending-on-tint);
+    border-color: color-mix(in srgb, var(--qa-pending-on-tint) 28%, transparent);
   }
 
   .qa-progress-label {
@@ -381,13 +525,13 @@
     align-items: baseline;
     font-size: 0.85rem;
     color: var(--qa-fg-muted);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
 
   .qa-progress-label strong {
     color: var(--qa-fg);
     font-family: var(--qa-font-display);
-    font-size: 1rem;
+    font-size: 1.05rem;
   }
 
   .qa-feature-list {
@@ -402,9 +546,11 @@
 
   .qa-feature-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 18px;
-    padding: 16px 18px;
+    column-gap: 18px;
+    row-gap: 8px;
+    padding: 18px;
     margin: 0 -18px;
     text-decoration: none;
     color: inherit;
@@ -417,20 +563,33 @@
   }
 
   .qa-feature-row__main {
-    flex: 1;
+    flex: 1 1 220px;
     min-width: 0;
   }
 
   .qa-feature-row__name {
     margin: 0;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 1.05rem;
   }
 
   .qa-feature-row__tags {
-    margin: 3px 0 0;
+    margin: 4px 0 0;
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  .qa-feature-row__meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .qa-feature-row__meta .qa-icon {
+    color: var(--qa-fg-muted);
   }
 
   .qa-feature-row__count {
@@ -441,22 +600,17 @@
 
   .qa-feature-row__percent {
     font-family: var(--qa-font-display);
-    font-size: 1.4rem;
+    font-size: 1.55rem;
     font-weight: 600;
-    min-width: 3.2ch;
+    min-width: 3.4ch;
     text-align: right;
-  }
-
-  .qa-feature-row__chevron {
-    color: var(--qa-fg-muted);
-    font-size: 1.1rem;
   }
 
   .qa-badge {
     display: inline-block;
-    padding: 3px 10px;
+    padding: 4px 11px;
     border-radius: 999px;
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -465,31 +619,35 @@
   }
 
   .qa-badge--pass {
-    color: var(--qa-pass);
+    color: var(--qa-pass-on-tint);
     background: var(--qa-pass-bg);
-    border-color: var(--qa-pass);
+    border-color: var(--qa-pass-on-tint);
   }
   .qa-badge--fail {
-    color: var(--qa-fail);
+    color: var(--qa-fail-on-tint);
     background: var(--qa-fail-bg);
-    border-color: var(--qa-fail);
+    border-color: var(--qa-fail-on-tint);
   }
   .qa-badge--skip {
-    color: var(--qa-skip);
+    color: var(--qa-skip-on-tint);
     background: var(--qa-skip-bg);
-    border-color: var(--qa-skip);
+    border-color: var(--qa-skip-on-tint);
   }
   .qa-badge--pending {
-    color: var(--qa-pending);
+    color: var(--qa-pending-on-tint);
     background: var(--qa-pending-bg);
-    border-color: var(--qa-pending);
+    border-color: var(--qa-pending-on-tint);
   }
 
   .qa-scenario {
     border: 1px solid var(--qa-border);
-    border-radius: 10px;
-    padding: 18px 20px;
-    margin-bottom: 16px;
+    border-radius: 12px;
+    padding: 22px 24px;
+    margin-bottom: 20px;
+    /* Espacio de respiro al llegar por el link "Ver primer fallo"
+       (`.qa-jump-to-failure`) — sin esto, el scenario queda pegado al
+       borde superior del viewport. */
+    scroll-margin-top: 20px;
     /* Ver `.qa-step::before`: numera los steps dentro de ESTE scenario. */
     counter-reset: qa-step;
   }
@@ -497,57 +655,70 @@
   .qa-scenario-header {
     display: flex;
     align-items: baseline;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
-    margin-bottom: 14px;
+    margin-bottom: 16px;
   }
 
   .qa-scenario-header h3 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: 1.15rem;
   }
 
   .qa-tag {
     display: inline-block;
     color: var(--qa-fg-muted);
     font-size: 0.75rem;
-    padding: 1px 8px;
+    padding: 2px 9px;
     border: 1px solid var(--qa-border);
     border-radius: 999px;
   }
 
   .qa-step {
     border-top: 1px solid var(--qa-border);
-    padding: 14px 0;
+    padding: 16px 0;
     counter-increment: qa-step;
   }
 
   .qa-step:first-of-type {
     border-top: none;
-    padding-top: 4px;
+    padding-top: 6px;
   }
 
   .qa-step-header {
     display: flex;
     align-items: baseline;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
   }
 
   /* El número de step SÍ importa acá (a diferencia de un marcador 01/02/03
      decorativo): los steps corren en orden real, y poder decir "falló el
-     step 3" es información real para quien lee el reporte. */
+     step 3" es información real para quien lee el reporte — por eso es un
+     chip propio (mismo lenguaje pill que badges/tags) y no solo un dígito
+     gris suelto. */
   .qa-step-header::before {
     content: counter(qa-step);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5em;
+    height: 1.5em;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--qa-bg);
     color: var(--qa-fg-muted);
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    min-width: 1.4em;
   }
 
   .qa-step-keyword {
     font-weight: 700;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--qa-fg-muted);
+    flex-shrink: 0;
   }
 
   .qa-step-background {
@@ -555,25 +726,29 @@
     font-style: italic;
   }
 
+  /* Alineadas bajo el TEXTO del step, no bajo el chip numerado (ver
+     `.qa-step-header::before`: ~1.5em de chip + 0.75em de gap). */
   .qa-step-notes {
-    margin: 8px 0 0 1.4em;
+    margin: 8px 0 0 2.1em;
     color: var(--qa-fg-muted);
     font-size: 0.9rem;
   }
 
   .qa-defect {
-    margin: 10px 0 0 1.4em;
-    padding: 10px 12px;
-    border: 1px solid var(--qa-fail);
+    margin: 10px 0 0 2.1em;
+    padding: 14px 16px;
+    border: 1px solid var(--qa-fail-on-tint);
     background: var(--qa-fail-bg);
     border-radius: 8px;
     color: var(--qa-fg);
   }
 
   .qa-defect strong {
-    color: var(--qa-fail);
-    display: block;
-    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    color: var(--qa-fail-on-tint);
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -582,14 +757,14 @@
   .qa-evidence-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin: 10px 0 0 1.4em;
+    gap: 12px;
+    margin: 10px 0 0 2.1em;
   }
 
   .qa-evidence-item {
     border: 1px solid var(--qa-border);
     border-radius: 8px;
-    padding: 6px;
+    padding: 8px;
     background: var(--qa-bg-elevated);
     width: 160px;
   }
@@ -598,6 +773,8 @@
   .qa-evidence-item video {
     display: block;
     width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
     border-radius: 4px;
     background: #000;
   }
@@ -606,16 +783,19 @@
     display: block;
     font-size: 0.72rem;
     color: var(--qa-fg-muted);
-    margin-top: 4px;
+    margin-top: 6px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .qa-back-link {
-    display: inline-block;
-    margin-bottom: 16px;
-    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+    font-size: 0.92rem;
+    font-weight: 500;
   }
 
   .qa-empty {
@@ -639,20 +819,45 @@
    * silenciosamente el `border-left` de `.qa-rail` (pasó de verdad al
    * armar este template — el mismo pitfall de especificidad que advierte
    * la skill frontend-design). Poniendo `.qa-rail` al final, siempre gana.
+   *
+   * Usa `--qa-X-on-tint` (ver `:root`), no `--qa-X` a secas: contra el
+   * fondo neutro de `.qa-card`/`.qa-scenario` en tema oscuro, el tono base
+   * (fijo, para calzar con `RESULT_COLORS` del SVG) cae hasta 2.10:1 —
+   * ilegible como "semáforo" cuando el elemento MÁS depende de leerse sin
+   * texto. La variante on-tint corrige eso sin tocar el valor que comparte
+   * con `charts.ts`.
    */
   .qa-rail {
-    border-left: 4px solid transparent;
+    border-left: 5px solid transparent;
   }
   .qa-rail--pass {
-    border-left-color: var(--qa-pass);
+    border-left-color: var(--qa-pass-on-tint);
   }
   .qa-rail--fail {
-    border-left-color: var(--qa-fail);
+    border-left-color: var(--qa-fail-on-tint);
   }
   .qa-rail--skip {
-    border-left-color: var(--qa-skip);
+    border-left-color: var(--qa-skip-on-tint);
   }
   .qa-rail--pending {
-    border-left-color: var(--qa-pending);
+    border-left-color: var(--qa-pending-on-tint);
+  }
+
+  /* En viewports angostos, `.qa-feature-row` recibía todos sus hijos como
+     ítems flex sueltos: el nombre largo de un feature envolvía a dos
+     líneas y "steps"/badge/% terminaban flotando en el medio, superpuestos
+     con la segunda línea del nombre. Agrupar count+badge+%+chevron en
+     `.qa-feature-row__meta` (ver index.hbs) y forzarlo a su propia línea
+     acá resuelve eso con un salto de línea real en vez de una superposición. */
+  @media (max-width: 560px) {
+    .qa-feature-row__meta {
+      flex-basis: 100%;
+      justify-content: space-between;
+      margin-left: 0;
+    }
+
+    .qa-stats {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

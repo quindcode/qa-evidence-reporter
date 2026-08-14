@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createConfigLoader } from '../../../core/config/index.js';
 import { QaError } from '../../../core/types/errors.js';
 import type { Logger } from '../../../core/types/logger.js';
 import { DEFAULT_BRANDING, DEFAULT_BRANDING_LOGO_PATH } from '../defaultBrandingPaths.js';
@@ -57,6 +58,14 @@ describe('runInit', () => {
         logoPath: 'branding/logo.png',
         ...DEFAULT_BRANDING,
       },
+      jira: {
+        baseUrl: null,
+        email: null,
+        _ejemplo: {
+          baseUrl: 'https://tuempresa.atlassian.net',
+          email: 'tu-email@quind.io',
+        },
+      },
       reportTemplate: null,
     });
 
@@ -81,6 +90,14 @@ describe('runInit', () => {
 
     // Debe haber impreso próximos pasos accionables, no quedar en silencio.
     expect(messages.join('\n')).toMatch(/próximos pasos/i);
+
+    // "jira._ejemplo" es documental (no forma parte de JiraConfigSchema) —
+    // el ConfigLoader REAL (no solo JSON.parse) debe poder cargar el
+    // archivo tal cual "init" lo deja, sin que esa clave extra lo rompa, y
+    // sin que la integración quede activada por accidente.
+    const configLoader = createConfigLoader();
+    const loadedConfig = await configLoader.loadConfig(join(cwd, 'qa-config.json'));
+    expect(loadedConfig.jira).toEqual({ baseUrl: null, email: null });
   });
 
   it('usa --name para el projectName en vez del nombre de la carpeta', async () => {

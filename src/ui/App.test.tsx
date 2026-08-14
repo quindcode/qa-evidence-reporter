@@ -37,11 +37,16 @@ describe('App — branding', () => {
         highlightColor: null,
         ctaColor: null,
       },
+      jira: { enabled: false },
     });
 
     render(<App />);
 
     await waitFor(() => expect(screen.getByText('Mi Proyecto QA')).toBeInTheDocument());
+    // Ningún ErrorBanner (role="alert") — confirma que `loadFeatures` no
+    // pisó silenciosamente un throw (p. ej. leer un campo de la respuesta
+    // que el mock no incluye) con un ApiRequestError genérico.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('img', { name: /logo/i })).not.toBeInTheDocument();
     expect(document.querySelector('.app-header--branded')).toBeNull();
     expect(document.querySelector('.app-header__stripe')).toBeNull();
@@ -60,6 +65,7 @@ describe('App — branding', () => {
         highlightColor: '#ffb91c',
         ctaColor: '#ff5530',
       },
+      jira: { enabled: false },
     });
 
     render(<App />);
@@ -93,6 +99,7 @@ describe('App — branding', () => {
         highlightColor: null,
         ctaColor: null,
       },
+      jira: { enabled: false },
     });
 
     render(<App />);

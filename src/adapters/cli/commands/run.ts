@@ -113,6 +113,7 @@ export async function runRun(cwd: string, deps: RunCommandDeps = {}): Promise<Ru
     brandingLogoAbsolutePath: config.branding.logoPath
       ? resolve(cwd, config.branding.logoPath)
       : null,
+    jiraApiToken: process.env.JIRA_API_TOKEN,
   };
 
   const startServerFn = deps.startServer ?? startServerReal;

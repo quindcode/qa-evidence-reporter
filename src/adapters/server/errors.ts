@@ -37,6 +37,10 @@ const ERROR_STATUS_BY_CODE: Readonly<Record<string, number>> = {
   REPORT_GENERATION_ERROR: 500,
   CONFIG_VALIDATION_ERROR: 400,
   CONFIG_NOT_FOUND: 404,
+  JIRA_NOT_CONFIGURED: 404, // mismo criterio que NO_BRANDING_LOGO: "esta capacidad no está disponible"
+  JIRA_ISSUE_NOT_FOUND: 404, // mismo criterio que SESSION_NOT_FOUND
+  JIRA_AUTHENTICATION_ERROR: 502, // este server no pudo autenticarse contra Jira — no es culpa del caller
+  JIRA_REQUEST_ERROR: 502, // fallo genérico hablando con Jira (red, 5xx de Jira, etc.)
   // `adapters/server` (ver constantes arriba)
   [SESSION_ALREADY_IN_PROGRESS]: 409,
   [NOTHING_TO_REPORT]: 404,

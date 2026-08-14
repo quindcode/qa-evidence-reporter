@@ -58,6 +58,13 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
           highlightColor: context.config.branding.highlightColor,
           ctaColor: context.config.branding.ctaColor,
         },
+        // Solo el booleano derivado: `baseUrl`/`email` (ni el token, que
+        // nunca está en `config` — ver `JiraConfigSchema`) se exponen a la
+        // UI, no hacen falta para decidir si mostrar el botón "Adjuntar a
+        // Jira" (ver `Runner.tsx`).
+        jira: {
+          enabled: Boolean(context.config.jira.baseUrl && context.config.jira.email),
+        },
       });
     }),
   );

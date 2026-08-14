@@ -46,6 +46,7 @@ async function buildContext(projectRoot: string, port: number): Promise<ServerCo
     reportsDir: join(projectRoot, 'reports'),
     templateDir: DEFAULT_TEMPLATE_DIR,
     brandingLogoAbsolutePath: null,
+    jiraApiToken: undefined,
   };
 }
 

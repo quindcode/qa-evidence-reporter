@@ -275,9 +275,15 @@ trampas reales del modelo actual que conviene conocer antes de empezar.
   `evidence.allowedFormats`, o archivos más grandes que
   `evidence.maxFileSizeMB`) esperando que "simplemente funcione" — se
   rechazan con error (`415`/`413`); ajustá la config antes si lo necesitás.
-- **No esperes trazabilidad automática a Jira/Azure DevOps/etc.** La
-  "descripción del defecto" vive solo en la sesión y en el reporte; si tu
-  proceso requiere un ticket, copiala manualmente al sistema que usen.
+- **No esperes más trazabilidad con Jira de la que hay.** Si configurás
+  `jira` (ver `## qa-config.json`), el botón "Adjuntar a Jira" del runner
+  sube el `.zip` del reporte como adjunto al issue que indiques y agrega un
+  comentario con un resumen (feature + scenarios + % aprobado/fallado/
+  omitido) — pero nada más: no sincroniza estado, y no lee nada de Jira de
+  vuelta. Azure DevOps todavía no tiene ninguna integración. El comentario
+  NUNCA incluye el detalle paso a paso ni la "descripción del defecto" de
+  cada step — eso sigue viviendo solo en la sesión y en el reporte adjunto;
+  si tu proceso necesita ese texto también en el ticket, copialo a mano.
 - **No la uses como el único documento del test plan.** Cubre ejecución +
   evidencia + reporte de casos ya escritos como `.feature`, no la
   planificación (objetivos, riesgos, cronograma, criterios de
@@ -330,13 +336,17 @@ y se puede arrastrar y soltar (drag & drop) uno o más archivos sobre esa misma
     "highlightColor": null,
     "ctaColor": null
   },
+  "jira": {
+    "baseUrl": null,
+    "email": null
+  },
   "reportTemplate": null
 }
 ```
 
 Todos los campos son opcionales (una config parcial se completa con estos
 defaults) — el bloque de arriba muestra el default a nivel de esquema, con
-`branding` en `null` (sin branding).
+`branding` en `null` (sin branding) y `jira` en `null` (sin integración).
 
 **`qa-evidence-reporter init` no usa ese default para `branding`**: escribe
 siempre el logo y los 4 colores estándar de Quind (`primaryColor`
@@ -348,28 +358,140 @@ todo en `null` de arriba sigue siendo válido si armás un `qa-config.json` a
 mano (sin `init`) o si editás el que generó `init` para sacarle el
 branding.
 
-| Campo                     | Tipo                                     | Descripción                                                                                          |
-| ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `projectName`             | `string`                                 | Nombre mostrado en el header del runner y del reporte.                                               |
-| `team`                    | `string[]`                               | Lista libre de integrantes del equipo (informativo, se muestra en el reporte).                       |
-| `featuresDir`             | `string`                                 | Carpeta (relativa al directorio del proyecto) donde viven los `.feature`.                            |
-| `evidenceDir`             | `string`                                 | Carpeta donde se guardan los archivos de evidencia subidos (organizados por feature/scenario/step).  |
-| `reportsDir`              | `string`                                 | Carpeta donde `report` escribe el HTML final.                                                        |
-| `server.port`             | `number`                                 | Puerto HTTP donde escucha `run`.                                                                     |
-| `server.openBrowser`      | `boolean`                                | Si `run` intenta abrir el navegador automáticamente al arrancar.                                     |
-| `evidence.maxFileSizeMB`  | `number`                                 | Tamaño máximo por archivo de evidencia; archivos más grandes se rechazan (`413`).                    |
-| `evidence.allowedFormats` | `string[]`                               | Extensiones permitidas (sin el punto); cualquier otra se rechaza (`415`).                            |
-| `logging.level`           | `"debug" \| "info" \| "warn" \| "error"` | Nivel de log interno (diagnóstico, no la salida de usuario de los comandos).                         |
-| `branding.logoPath`       | `string \| null`                         | Ruta al logo (relativa al proyecto). `init` la deja en `"branding/logo.png"`; `null` = no mostrar ninguno. |
-| `branding.primaryColor`   | `string \| null`                         | Color del header del reporte/runner (hex, ej. `"#1e3543"`). `null` = header neutro de siempre.       |
-| `branding.accentColor`    | `string \| null`                         | Color de acento: links, botones, foco. `null` = acento neutro de siempre.                            |
-| `branding.highlightColor` | `string \| null`                         | Color de detalle de marca (franja distintiva bajo el header).                                        |
-| `branding.ctaColor`       | `string \| null`                         | Color de una acción destacada puntual (ej. "Exportar como ZIP").                                     |
-| `reportTemplate`          | `string \| null`                         | Ruta a un template Handlebars custom, o `null` para usar el template embebido (`templates/default`). |
+| Campo                     | Tipo                                     | Descripción                                                                                                                |
+| ------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `projectName`             | `string`                                 | Nombre mostrado en el header del runner y del reporte.                                                                     |
+| `team`                    | `string[]`                               | Lista libre de integrantes del equipo (informativo, se muestra en el reporte).                                             |
+| `featuresDir`             | `string`                                 | Carpeta (relativa al directorio del proyecto) donde viven los `.feature`.                                                  |
+| `evidenceDir`             | `string`                                 | Carpeta donde se guardan los archivos de evidencia subidos (organizados por feature/scenario/step).                        |
+| `reportsDir`              | `string`                                 | Carpeta donde `report` escribe el HTML final.                                                                              |
+| `server.port`             | `number`                                 | Puerto HTTP donde escucha `run`.                                                                                           |
+| `server.openBrowser`      | `boolean`                                | Si `run` intenta abrir el navegador automáticamente al arrancar.                                                           |
+| `evidence.maxFileSizeMB`  | `number`                                 | Tamaño máximo por archivo de evidencia; archivos más grandes se rechazan (`413`).                                          |
+| `evidence.allowedFormats` | `string[]`                               | Extensiones permitidas (sin el punto); cualquier otra se rechaza (`415`).                                                  |
+| `logging.level`           | `"debug" \| "info" \| "warn" \| "error"` | Nivel de log interno (diagnóstico, no la salida de usuario de los comandos).                                               |
+| `branding.logoPath`       | `string \| null`                         | Ruta al logo (relativa al proyecto). `init` la deja en `"branding/logo.png"`; `null` = no mostrar ninguno.                 |
+| `branding.primaryColor`   | `string \| null`                         | Color del header del reporte/runner (hex, ej. `"#1e3543"`). `null` = header neutro de siempre.                             |
+| `branding.accentColor`    | `string \| null`                         | Color de acento: links, botones, foco. `null` = acento neutro de siempre.                                                  |
+| `branding.highlightColor` | `string \| null`                         | Color de detalle de marca (franja distintiva bajo el header).                                                              |
+| `branding.ctaColor`       | `string \| null`                         | Color de una acción destacada puntual (ej. "Exportar como ZIP").                                                           |
+| `jira.baseUrl`            | `string \| null`                         | URL del sitio Jira **Cloud** (ej. `"https://tuempresa.atlassian.net"`, sin `/rest/...`). `null` = integración desactivada. |
+| `jira.email`              | `string \| null`                         | Email de la cuenta Jira Cloud usada para autenticar. No es secreto — el token sí (ver más abajo).                          |
+| `reportTemplate`          | `string \| null`                         | Ruta a un template Handlebars custom, o `null` para usar el template embebido (`templates/default`).                       |
+
+`init` deja el bloque `jira` siempre presente pero desactivado
+(`baseUrl`/`email` en `null` — JSON no soporta comentarios, así que esta es
+la única forma de dejarlo "listo" sin arriesgar un archivo inválido), junto
+a un campo extra `jira._ejemplo` puramente documental (no lo lee el
+validador, no activa nada) que muestra la forma real de `baseUrl`/`email`.
+Para activar la integración, reemplazá los dos `null` por tus valores
+reales — `_ejemplo` podés borrarlo o dejarlo, es inofensivo.
 
 Los colores semánticos de resultado (verde=Pass, rojo=Fail, gris=Skip,
 ámbar=Pending) **nunca** se ven afectados por `branding` — siguen siendo
 fijos, para no perder la lectura instantánea del estado de cada step.
+
+### Integración con Jira Cloud (opcional)
+
+Con `jira.baseUrl` y `jira.email` configurados (y la variable de entorno
+`JIRA_API_TOKEN` seteada — nunca en `qa-config.json`, es secreto), el panel
+de "Reporte" del runner (`qa-evidence-reporter run`) muestra un botón
+**"Adjuntar a Jira"**: escribís la clave de un issue (historia, épica, bug —
+cualquiera, la API de adjuntos de Jira no distingue tipo) y:
+
+- sube un **`.zip`** del reporte completo como adjunto a ese issue — el
+  mismo que generarías con "Exportar como ZIP" directo, sin bajarlo a mano
+  primero. No se sube solo el `index.html`: el reporte necesita también las
+  páginas de cada feature (`features/*.html`), los estilos/JS y la
+  evidencia (capturas/videos) para poder abrirse — sin ese resto, un HTML
+  suelto no muestra nada útil, por eso siempre viaja empaquetado. Si volvés
+  a publicar sobre el mismo issue, el `.zip` anterior (el que se llame
+  exactamente `qa-report.zip`) se **borra y se reemplaza** por el nuevo —
+  no queda acumulando copias.
+- agrega un **comentario** al issue con un resumen legible: el nombre de
+  cada feature probada, sus scenarios (nombre + resultado — nunca el
+  detalle paso a paso, eso sigue solo en el `.zip`), y el % de aprobado/
+  fallado/omitido de la sesión.
+
+Solo **Jira Cloud** (`*.atlassian.net`) por ahora — Jira Server/Data Center
+no está soportado, y Azure DevOps todavía no tiene ninguna integración (ver
+la sección "Qué NO hacer" para el alcance exacto de lo que sube).
+
+#### Paso a paso: generar el token y probar la integración
+
+1. **Generá un API token de Atlassian**, con la cuenta de Jira que vas a usar
+   para publicar (necesita permiso para agregar adjuntos/comentarios en los
+   issues donde vayas a publicar):
+   - Entrá a <https://id.atlassian.com/manage-profile/security/api-tokens>.
+   - "Create API token" → ponele un nombre que lo identifique (ej.
+     `qa-evidence-reporter`) → copialo apenas se genera. Atlassian no lo
+     vuelve a mostrar después; si lo perdés, hay que crear uno nuevo y
+     revocar el viejo.
+   - Atlassian permite (y desde 2025 exige) ponerle una fecha de
+     vencimiento al token — anotala en algún lado del equipo para
+     renovarlo antes de que expire y la integración empiece a fallar con
+     `JIRA_AUTHENTICATION_ERROR`.
+   - Anotá también el email de esa cuenta y la URL base de tu sitio (la que
+     usás para entrar a Jira en el navegador, ej.
+     `https://tuempresa.atlassian.net`, **sin** `/jira` ni `/rest/...` al
+     final) — los vas a necesitar en los pasos siguientes.
+
+2. **Exportá el token como variable de entorno**, en la terminal donde vas
+   a trabajar (nunca lo pegues en un archivo, y nunca lo commitees):
+
+   ```bash
+   export JIRA_API_TOKEN="EL_TOKEN_QUE_COPIASTE"
+   ```
+
+3. **Probá las credenciales solas, antes de tocar la herramienta** (no hace
+   falta tener un proyecto QA armado todavía):
+
+   ```bash
+   curl -u "tu-email@quind.io:$JIRA_API_TOKEN" \
+     https://tuempresa.atlassian.net/rest/api/3/myself
+   ```
+
+   - Si devuelve un JSON con tu nombre/cuenta → el email + token son
+     válidos, seguí al paso 4.
+   - Si devuelve `401`/`Unauthorized` → el token está mal copiado, vencido,
+     o el email no corresponde a ese token — repetí el paso 1.
+
+4. **Configurá el proyecto QA** (el que usa `init`/`run`, no este repo): en
+   su `qa-config.json`, agregá el bloque `jira`. Como referencia, así queda
+   con datos reales de ejemplo — dejalo **comentado** hasta que lo
+   necesites (JSON no soporta comentarios: al descomentarlo tenés que
+   borrar los `//` de cada línea, y reemplazar `baseUrl`/`email` por los de
+   tu propio sitio, no dejar estos):
+
+   ```jsonc
+   // "jira": {
+   //   "baseUrl": "https://vm-qa-quind-team.atlassian.net",
+   //   "email": "sebastian.alzate@quind.io"
+   // }
+   ```
+
+5. **Volvé a exportar el token**, en la terminal donde vas a correr
+   `qa-evidence-reporter run` (nunca en el archivo, nunca commiteado — si es
+   la misma terminal del paso 2, con que siga exportada alcanza; si abriste
+   una nueva, repetí el comando):
+
+   ```bash
+   export JIRA_API_TOKEN="EL_TOKEN_QUE_COPIASTE"
+   ```
+
+6. **Probá el flujo completo**: `qa-evidence-reporter run`, seleccioná
+   alguna feature, marcá al menos un step, generá el reporte, y en el panel
+   de "Reporte" escribí la clave de un issue real al que tengas acceso (ej.
+   `QA-1`) → **"Adjuntar a Jira"**. Si todo salió bien aparece un link "Ver
+   issue en Jira"; si algo falla, el mensaje de error (banner rojo) dice
+   cuál de los 4 casos fue: sin reporte generado todavía, Jira no
+   configurado, el issue no existe (o no tenés acceso), o falló la
+   autenticación.
+
+7. **Confirmá en Jira**: abrí el issue por el link que te dio la
+   herramienta (o buscalo a mano) y fijate que `qa-report.zip` esté en su
+   lista de adjuntos, y que se haya agregado el comentario con el resumen
+   (features, scenarios, porcentajes).
 
 ## Proyecto de ejemplo (opcional)
 

@@ -34,6 +34,7 @@ describe('createConfigLoader', () => {
           highlightColor: '#ffb91c',
           ctaColor: '#ff5530',
         },
+        jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
         reportTemplate: './my-template',
       };
       const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(full));
@@ -90,7 +91,41 @@ describe('createConfigLoader', () => {
           highlightColor: null,
           ctaColor: null,
         },
+        jira: { baseUrl: null, email: null },
         reportTemplate: null,
+      });
+    });
+
+    it('completa "jira" con defaults ausentes dentro de una config parcial (mismo criterio .prefault que "branding")', async () => {
+      const partial = { jira: { baseUrl: 'https://tuempresa.atlassian.net' } };
+      const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(partial));
+
+      const config = await loader.loadConfig('/proj/qa-config.json');
+
+      expect(config.jira).toEqual({ baseUrl: 'https://tuempresa.atlassian.net', email: null });
+    });
+
+    it('lanza ConfigValidationError, mencionando "jira.baseUrl", cuando no es una URL válida', async () => {
+      const invalid = { jira: { baseUrl: 'no-es-una-url' } };
+      const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(invalid));
+
+      await expect(loader.loadConfig('/proj/qa-config.json')).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(ConfigValidationError);
+        const configError = error as ConfigValidationError;
+        expect(configError.issues).toEqual([expect.objectContaining({ path: 'jira.baseUrl' })]);
+        return true;
+      });
+    });
+
+    it('lanza ConfigValidationError, mencionando "jira.email", cuando no es un email válido', async () => {
+      const invalid = { jira: { email: 'no-es-un-email' } };
+      const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(invalid));
+
+      await expect(loader.loadConfig('/proj/qa-config.json')).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(ConfigValidationError);
+        const configError = error as ConfigValidationError;
+        expect(configError.issues).toEqual([expect.objectContaining({ path: 'jira.email' })]);
+        return true;
       });
     });
 

@@ -154,6 +154,75 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     }
   });
 
+  it('una corrida posterior con menos features seleccionadas borra las páginas de detalle huérfanas de la corrida anterior', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+
+    // Primera corrida: Login + Checkout seleccionados (sessionState del
+    // beforeEach) -> genera ambas páginas de detalle.
+    await generator.generate(sessionState, outputDir);
+    expect(existsSync(join(outputDir, 'features', 'f0-login.html'))).toBe(true);
+    expect(existsSync(join(outputDir, 'features', 'f1-checkout.html'))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', loginEvidence.path))).toBe(true);
+
+    // Segunda corrida: sesión nueva con SOLO Login seleccionado (como pasa
+    // al volver a `run` con una selección más chica que la sesión previa).
+    // Antes de este fix, `f1-checkout.html` y la evidencia de Checkout
+    // sobrevivían en `outputDir` — ver Priority Issue P0 de
+    // /impeccable critique: dos versiones del reporte conviviendo en el
+    // mismo directorio entregable.
+    const narrowerSessionEngine = createSessionEngine(
+      join(evidenceBaseDir, '.qa-evidence-reporter/session-2.json'),
+    );
+    const narrowerSession = await narrowerSessionEngine.createSession(
+      [makeFeatures()[0]!],
+      'Proyecto Demo',
+    );
+
+    await generator.generate(narrowerSession, outputDir);
+
+    expect(existsSync(join(outputDir, 'features', 'f0-login.html'))).toBe(true);
+    expect(existsSync(join(outputDir, 'features', 'f1-checkout.html'))).toBe(false);
+    expect(existsSync(join(outputDir, 'assets', defectEvidence.path))).toBe(false);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    expect(indexHtml).not.toContain('Checkout');
+  });
+
+  it('el dashboard y el detalle de feature ofrecen un link "Ver primer fallo" al primer scenario fallido, y no aparece donde no hay fallos', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    // Checkout es el único feature con un fallo (ver beforeEach:
+    // checkoutStep1 en 'fail'), en su único scenario.
+    const checkoutScenarioId = sessionState.selectedFeatures[1]!.scenarios[0]!.id;
+    const expectedAnchor = `scenario-${checkoutScenarioId}`;
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    expect(indexHtml).toContain(
+      `class="qa-jump-to-failure" href="features/f1-checkout.html#${expectedAnchor}"`,
+    );
+
+    const checkoutHtml = await readFile(join(outputDir, 'features', 'f1-checkout.html'), 'utf-8');
+    expect(checkoutHtml).toContain(`id="${expectedAnchor}"`);
+    expect(checkoutHtml).toContain(`class="qa-jump-to-failure" href="#${expectedAnchor}"`);
+
+    // Login no tiene ningún fallo -> sin link "Ver primer fallo" en su página
+    // (la clase SÍ aparece en el <style> embebido de toda página, ver
+    // styles.hbs — se busca el <a> real, no el nombre de la clase).
+    const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
+    expect(loginHtml).not.toContain('class="qa-jump-to-failure"');
+  });
+
   it('el index.html muestra los nombres de feature, badges de resultado y % correcto', async () => {
     const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
     const generator = createReportGenerator(
@@ -360,8 +429,11 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
         join(outputDir, 'features', 'f1-checkout.html'),
         'utf-8',
       );
-      // El defecto sigue resaltado en rojo semántico (`--qa-fail`), NUNCA con un color de marca.
-      expect(featureHtml).toContain('color: var(--qa-fail);');
+      // El defecto sigue resaltado en rojo semántico (`--qa-fail-on-tint`,
+      // variante con contraste garantizado en oscuro del mismo `--qa-fail`
+      // que comparte hex con `RESULT_COLORS`, ver charts.ts), NUNCA con un
+      // color de marca.
+      expect(featureHtml).toContain('color: var(--qa-fail-on-tint);');
       expect(featureHtml).not.toContain('color: #ff5530');
     });
   });

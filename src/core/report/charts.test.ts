@@ -2,7 +2,7 @@ import { DOMParser } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
 import type { ResultCounts } from '../types/report.js';
-import { RESULT_COLORS, renderDonutChart, renderProgressBar } from './charts.js';
+import { DONUT_SLICE_GAP_PX, RESULT_COLORS, renderDonutChart, renderProgressBar } from './charts.js';
 
 /** Parsea `svg` como XML y lanza si no es "well-formed" (ver investigación en el propio test file: `@xmldom/xmldom` lanza en fatalError por defecto, p. ej. tags sin cerrar). */
 function parseSvg(svg: string): Document {
@@ -31,7 +31,7 @@ describe('renderDonutChart', () => {
     expect(circles.every((circle) => circle.getAttribute('data-result') === null)).toBe(true);
   });
 
-  it('2 pass de 4 total → la porción "pass" ocupa el 50% del donut', () => {
+  it('2 pass de 4 total → la porción "pass" ocupa el 50% del donut (menos el hueco entre porciones)', () => {
     const svg = renderDonutChart(countsOf({ pass: 2, fail: 1, skip: 1 }));
     const doc = parseSvg(svg);
 
@@ -39,11 +39,18 @@ describe('renderDonutChart', () => {
     expect(passSlice.getAttribute('data-percent')).toBe('50');
     expect(passSlice.getAttribute('data-value')).toBe('2');
 
-    // El largo del segmento "pintado" del stroke-dasharray debe ser
-    // exactamente la mitad de la circunferencia total (primer número del
-    // dasharray = porción pintada, segundo = porción restante).
+    // El largo del segmento "pintado" del stroke-dasharray debe ser la mitad
+    // de la circunferencia total, menos el hueco fijo entre porciones (ver
+    // DONUT_SLICE_GAP_PX) que separa esta porción de sus vecinas — ya no es
+    // exactamente igual al resto (`painted === rest`) porque ese resto ahora
+    // incluye el hueco.
+    const size = 220;
+    const strokeWidth = 32;
+    const radius = (size - strokeWidth) / 2;
+    const circumference = 2 * Math.PI * radius;
     const [painted, rest] = parseDasharray(passSlice);
-    expect(painted).toBeCloseTo(rest, 1);
+    expect(painted).toBeCloseTo(circumference / 2 - DONUT_SLICE_GAP_PX, 1);
+    expect(painted + rest).toBeCloseTo(circumference, 1);
   });
 
   it('cada categoría con valor > 0 tiene su propio <circle> con el color documentado en RESULT_COLORS', () => {

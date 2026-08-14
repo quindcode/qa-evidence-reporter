@@ -87,6 +87,16 @@ export interface FeatureReportView {
   scenarios: ScenarioReportView[];
   /** Ruta relativa a la raíz de `outputDir` de la página de detalle de este feature, p. ej. `"features/f0-login.html"`. */
   detailPath: string;
+  /**
+   * `id` (ver `ScenarioReportView.id`) del primer scenario con
+   * `result === 'fail'` de este feature, o `undefined` si ninguno falló.
+   * Cada `<section class="qa-scenario">` del template lleva
+   * `id="scenario-{{id}}"` (ver `feature-detail.hbs`) — este campo es el
+   * target de un link "Ver primer fallo" en el hero, para no depender de
+   * scroll+rail-scanning en un feature con muchos scenarios (ver
+   * `/impeccable critique` del reporte, Priority Issue P2).
+   */
+  firstFailedScenarioId?: string;
 }
 
 /** Metadata de proyecto para el encabezado del reporte. */
@@ -186,6 +196,15 @@ export interface ReportData {
   summary: ResultSummary;
   dashboard: DashboardCharts;
   features: FeatureReportView[];
+  /**
+   * Ruta relativa a la raíz de `outputDir` (combina `detailPath` del
+   * primer feature fallido + `#scenario-{id}` de su primer scenario
+   * fallido, p. ej. `"features/f0-login.html#scenario-f0-login_s1-..."`),
+   * o `undefined` si ningún step de toda la sesión falló. El dashboard usa
+   * esto para un link "Ver primer fallo" que salta directo al primer
+   * problema real sin depender de scroll+rail-scanning por feature.
+   */
+  firstFailureHref?: string;
 }
 
 /**

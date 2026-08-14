@@ -59,6 +59,24 @@ function isStepResult(value: unknown): value is StepResult {
  */
 const upload = multer({ storage: multer.memoryStorage() });
 
+/**
+ * `multer`/`busboy` decodifican el `filename` de un campo multipart como
+ * `latin1` por defecto — el multipart spec técnicamente exige eso para
+ * headers sin `RFC 2231`, pero los navegadores reales mandan el filename
+ * en UTF-8 crudo sin esa codificación extra. El resultado: cualquier
+ * nombre de archivo con tilde/ñ/etc. llega a `file.originalname` como
+ * mojibake (`"pistón"` -> `"pistÃ³n"`) y así queda guardado en disco y
+ * mostrado en el reporte HTML final — visible en un evidence real de
+ * `sample-project/` (ver `/impeccable critique` del reporte). Reinterpretar
+ * los bytes ya decodificados como latin1 de vuelta a UTF-8 deshace
+ * exactamente esa doble decodificación. Ver
+ * https://github.com/expressjs/multer/issues/1104 para el mismo problema
+ * reportado contra multer directamente.
+ */
+function decodeMultipartFilename(originalname: string): string {
+  return Buffer.from(originalname, 'latin1').toString('utf-8');
+}
+
 function extractFeatureIds(body: unknown): string[] {
   if (!body || typeof body !== 'object' || !('featureIds' in body)) {
     throw new QaError(
@@ -216,6 +234,13 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
           'No se recibió ningún archivo (campo multipart esperado: "files").',
           INVALID_REQUEST_BODY,
         );
+      }
+
+      // Corregido en el origen, ANTES de validar extensión/tamaño o guardar
+      // — así el nombre corregido es el único que existe de acá en más
+      // (mensajes de error, nombre en disco, `originalFilename` del reporte).
+      for (const file of files) {
+        file.originalname = decodeMultipartFilename(file.originalname);
       }
 
       const maxSizeBytes = context.config.evidence.maxFileSizeMB * 1024 * 1024;

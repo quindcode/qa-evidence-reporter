@@ -13,8 +13,8 @@
       {{#if feature.tags.length}} · {{#each feature.tags}}<span class="qa-tag">#{{this}}</span> {{/each}}{{/if}}
     {{/header}}
 
-    <div class="qa-container">
-      <a class="qa-back-link" href="{{basePath}}index.html">&larr; Volver al dashboard</a>
+    <main class="qa-container" id="qa-main">
+      <a class="qa-back-link" href="{{basePath}}index.html">{{> chevron-left}} Volver al dashboard</a>
 
       <section class="qa-card qa-rail qa-rail--{{feature.result}}">
         <div class="qa-hero">
@@ -24,15 +24,19 @@
             <p class="qa-hero__caption">
               {{feature.summary.pass}}/{{feature.summary.total}} steps aprobados
             </p>
+            {{#if feature.firstFailedScenarioId}}
+              <a class="qa-jump-to-failure" href="#scenario-{{feature.firstFailedScenarioId}}">{{> icon-alert}} Ver primer fallo</a>
+            {{/if}}
           </div>
           <div class="qa-hero__side">{{> legend summary=feature.summary}}</div>
         </div>
       </section>
 
       <h2 class="qa-section-heading">Escenarios</h2>
+      <p class="qa-hint">Cada paso sigue el formato Gherkin: <strong>Given</strong> (condición inicial), <strong>When</strong> (acción) y <strong>Then</strong> (resultado esperado).</p>
 
       {{#each feature.scenarios}}
-        <section class="qa-scenario qa-rail qa-rail--{{result}}" aria-label="Scenario: {{name}}">
+        <section class="qa-scenario qa-rail qa-rail--{{result}}" id="scenario-{{id}}" aria-label="Scenario: {{name}}">
           <div class="qa-scenario-header">
             <h3>{{name}}</h3>
             {{> badge}}
@@ -54,8 +58,8 @@
               {{/if}}
 
               {{#if (eq result "fail")}}
-                <div class="qa-defect" role="alert">
-                  <strong>Defecto encontrado</strong>
+                <div class="qa-defect">
+                  <strong>{{> icon-alert}} Defecto encontrado</strong>
                   {{defectDescription}}
                 </div>
               {{/if}}
@@ -71,7 +75,7 @@
           {{/each}}
         </section>
       {{/each}}
-    </div>
+    </main>
     {{> theme-toggle-script}}
   </body>
 </html>

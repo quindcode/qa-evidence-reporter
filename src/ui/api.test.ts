@@ -86,6 +86,27 @@ describe('api', () => {
     });
   });
 
+  it('publishToJira postea issueKey como JSON al endpoint correcto', async () => {
+    const fetchMock = mockFetchOnce({
+      issueKey: 'QA-123',
+      issueUrl: 'https://tuempresa.atlassian.net/browse/QA-123',
+    });
+
+    const response = await api.publishToJira('QA-123');
+
+    const [url, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/report/publish-jira');
+    expect(requestInit.method).toBe('POST');
+    expect((requestInit.headers as Record<string, string>)['Content-Type']).toBe(
+      'application/json',
+    );
+    expect(JSON.parse(requestInit.body as string)).toEqual({ issueKey: 'QA-123' });
+    expect(response).toEqual({
+      issueKey: 'QA-123',
+      issueUrl: 'https://tuempresa.atlassian.net/browse/QA-123',
+    });
+  });
+
   it('deleteEvidence llama DELETE al endpoint con stepId/evidenceId', async () => {
     const fetchMock = mockFetchOnce({ session: {} });
 

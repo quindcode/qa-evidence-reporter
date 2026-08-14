@@ -1,0 +1,12 @@
+{{!--
+  Ícono del toggle de tema — un único glyph fijo (no cambia según el tema
+  activo, igual que el label "Tema" al lado, ver partials/theme-toggle-script.hbs:
+  el script solo alterna `data-theme`, no reescribe este markup). SVG propio
+  en vez de un emoji (ver skill frontend-design: un emoji no es un ícono
+  consistente entre plataformas/fuentes) — un solo trazo, `currentColor`,
+  así hereda el color de texto del botón en cualquier tema o variante de
+  marca sin que este partial necesite conocerlos.
+--}}
+<svg class="qa-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"></path>
+</svg>

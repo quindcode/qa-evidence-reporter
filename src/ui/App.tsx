@@ -73,6 +73,7 @@ export function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [projectName, setProjectName] = useState('qa-evidence-reporter');
   const [branding, setBranding] = useState<Branding>(NO_BRANDING);
+  const [jiraEnabled, setJiraEnabled] = useState(false);
 
   const loadFeatures = useCallback(async () => {
     try {
@@ -82,6 +83,7 @@ export function App(): JSX.Element {
       setProjectName(response.projectName);
       setBranding(response.branding);
       applyBranding(response.branding);
+      setJiraEnabled(response.jira.enabled);
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err : new ApiRequestError('UNKNOWN_ERROR', String(err)),
@@ -183,6 +185,7 @@ export function App(): JSX.Element {
             onSessionUpdate={handleSessionUpdate}
             onError={setError}
             onSessionClosed={handleSessionClosed}
+            jiraEnabled={jiraEnabled}
           />
         )}
       </main>

@@ -248,3 +248,61 @@ export class UnsupportedEvidenceFormatError extends QaError {
     this.allowedFormats = allowedFormats;
   }
 }
+
+/**
+ * Se lanza cuando `JiraClient.attachReport()` (`core/jira`) se llama sin
+ * `baseUrl`/`email` (`qa-config.json` → `jira`) o sin `apiToken`
+ * (variable de entorno `JIRA_API_TOKEN`) configurados. `createJiraClient`
+ * nunca valida esto en su construcción (es una factory sin I/O, igual que
+ * `createReportGenerator`) — recién lo valida acá, la primera vez que se
+ * intenta usar de verdad, para que el server pueda arrancar sin Jira
+ * configurado sin problema.
+ */
+export class JiraNotConfiguredError extends QaError {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Jira no está configurado — falta "jira.baseUrl"/"jira.email" en qa-config.json, ' +
+        'o la variable de entorno JIRA_API_TOKEN.',
+      'JIRA_NOT_CONFIGURED',
+      options,
+    );
+  }
+}
+
+/** Se lanza cuando Jira responde 404 al intentar adjuntar un archivo a `issueKey` (no existe, o la cuenta no tiene permiso para verlo). */
+export class JiraIssueNotFoundError extends QaError {
+  readonly issueKey: string;
+
+  constructor(issueKey: string, options?: ErrorOptions) {
+    super(
+      `No se encontró el issue de Jira "${issueKey}" (o no hay permiso para verlo).`,
+      'JIRA_ISSUE_NOT_FOUND',
+      options,
+    );
+    this.issueKey = issueKey;
+  }
+}
+
+/** Se lanza cuando Jira responde 401/403 — el email/token configurados no autenticaron correctamente. */
+export class JiraAuthenticationError extends QaError {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Jira rechazó las credenciales configuradas (email + JIRA_API_TOKEN) — verificá que el token no haya vencido o sea inválido.',
+      'JIRA_AUTHENTICATION_ERROR',
+      options,
+    );
+  }
+}
+
+/**
+ * Fallo genérico al hablar con Jira: sin conexión de red, timeout, o
+ * cualquier respuesta no-2xx que no sea 401/403/404 (ver
+ * `JiraAuthenticationError`/`JiraIssueNotFoundError` para esos dos casos
+ * específicos). Siempre envuelve la causa real en `options.cause` cuando la
+ * hay (p. ej. la excepción que lanzó `fetch`).
+ */
+export class JiraRequestError extends QaError {
+  constructor(reason: string, options?: ErrorOptions) {
+    super(`Falló la solicitud a Jira: ${reason}`, 'JIRA_REQUEST_ERROR', options);
+  }
+}
