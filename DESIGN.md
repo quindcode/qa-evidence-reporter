@@ -32,19 +32,19 @@ colors:
   quind-cta: "#ff5530"
 typography:
   display:
-    fontFamily: "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif"
+    fontFamily: "Charter, 'Bitstream Charter', Georgia, 'Times New Roman', serif"
     fontSize: "clamp(3.25rem, 2.4rem + 4.2vw, 5.5rem)"
     fontWeight: 600
     lineHeight: 1
     letterSpacing: "-0.02em"
   body:
-    fontFamily: "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "Arial, 'Liberation Sans', Helvetica, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: "normal"
   label:
-    fontFamily: "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    fontFamily: "Arial, 'Liberation Sans', Helvetica, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 700
     lineHeight: 1.2
@@ -101,14 +101,14 @@ components:
 
 **Creative North Star: "El Informe Distinguido"**
 
-Dos superficies, un mismo producto, dos códigos de diseño deliberadamente distintos. El **runner** (Preact, corre en `localhost` mientras el QA trabaja) es una herramienta: paneles compactos, `system-ui` sin serif, `min-width: 1280px` porque nadie lo usa en un teléfono, y cero ceremonia — su trabajo es no estorbar mientras alguien recorre steps durante horas. El **reporte HTML** (Handlebars, estático, el único artefacto que el cliente llega a ver) es el producto real: se comporta como un dictamen impreso — número protagonista en serif de "documento formal" (`Iowan Old Style`/Palatino), un riel de color de resultado en el borde izquierdo de cada fila que se lee como un semáforo de inspección de arriba a abajo sin necesidad de leer una palabra, y aire generoso alrededor de cada tarjeta. La seriedad viene de los datos (el % de aprobación, no de un logo); el valor percibido viene de que ese dato está tratado con el mismo cuidado tipográfico que un certificado.
+Dos superficies, un mismo producto, dos códigos de diseño deliberadamente distintos. El **runner** (Preact, corre en `localhost` mientras el QA trabaja) es una herramienta: paneles compactos, `system-ui` sin serif, `min-width: 1280px` porque nadie lo usa en un teléfono, y cero ceremonia — su trabajo es no estorbar mientras alguien recorre steps durante horas. El **reporte HTML** (Handlebars, estático, el único artefacto que el cliente llega a ver) es el producto real: se comporta como un dictamen impreso — número protagonista en serif de "documento formal" (`Charter`), un riel de color de resultado en el borde izquierdo de cada fila que se lee como un semáforo de inspección de arriba a abajo sin necesidad de leer una palabra, y aire generoso alrededor de cada tarjeta. La seriedad viene de los datos (el % de aprobación, no de un logo); el valor percibido viene de que ese dato está tratado con el mismo cuidado tipográfico que un certificado.
 
 Ninguna de las dos superficies compite con el branding de marca cuando existe: el runner y el reporte reservan una sola franja de 3 colores vivos (`--brand-highlight`/acento/CTA) como firma reconocible, y todo lo demás — jerarquía, rieles de resultado, tipografía — se mantiene neutro para no diluirse contra la paleta de cualquier cliente que se configure.
 
 **Key Characteristics:**
 - Dos sistemas de color/tipografía paralelos (runner = herramienta neutra; reporte = documento con acento serif), unidos por una única paleta semántica de resultado (`pass`/`fail`/`skip`/`pending`) que nunca cambia entre ambos.
 - El riel de color izquierdo (`.qa-rail`) es la firma visual del reporte: estado legible por barrido vertical, sin leer texto.
-- Cero fuentes externas en el reporte — debe abrir con `file://` sin red — así que "serif con personalidad" siempre resuelve a una pila de fuentes del sistema (`Iowan Old Style, Palatino Linotype, Palatino, Georgia, Times New Roman, serif`), nunca a una fuente descargada.
+- Cero fuentes externas en el reporte — debe abrir con `file://` sin red — así que "serif con personalidad" siempre resuelve a una pila de fuentes del sistema (`Charter, Bitstream Charter, Georgia, Times New Roman, serif`), nunca a una fuente descargada.
 - Tema claro/oscuro real (no solo `prefers-color-scheme`): ambas superficies tienen un toggle que persiste en `localStorage` y gana con `[data-theme]` sobre la preferencia del sistema.
 - El branding de cliente (logo + 4 colores) es una capa aditiva sobre el sistema base, nunca un reemplazo de él: apagado, el reporte y el runner se ven exactamente iguales a como se ven hoy sin ninguna configuración.
 - La distribución de resultados se lee como chips de stat tono-sobre-tono (conteo real en Display font), no como una leyenda de gráfico de punto+texto; el donut que los acompaña ya no repite el % del hero en su centro cuando hay datos reales — solo lo muestra en el estado vacío ("Sin datos").
@@ -151,8 +151,8 @@ Elegidos como tonos 700/800 (oscuros, saturados, no colores planos brillantes) p
 
 ## Typography
 
-**Display Font:** `Iowan Old Style, Palatino Linotype, Palatino, Georgia, Times New Roman, serif` (reporte únicamente)
-**Body Font:** `-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif` (reporte y runner)
+**Display Font:** `Charter, Bitstream Charter, Georgia, Times New Roman, serif` (reporte únicamente)
+**Body Font:** `Arial, Liberation Sans, Helvetica, sans-serif` (reporte y runner)
 
 **Character:** Una serif de libro (no una serif decorativa) reservada estrictamente para el número que protagoniza su bloque — el % del hero del dashboard, el % de cada fila de feature. Todo lo demás, en ambas superficies, es sans-serif del sistema. La serif nunca aparece en el runner: es la firma exclusiva del documento que ve el cliente. Es, a propósito, una pila 100% de fuentes del sistema — el reporte debe seguir abriendo offline con `file://` sin depender de que una fuente exista físicamente en el archivo.
 
@@ -244,7 +244,7 @@ Bordes de 1px sólido en el color de línea fina en casi todo; el único borde g
 ## Do's and Don'ts
 
 ### Do:
-- **Do** reservar la serif de Display (`Iowan Old Style`/Palatino/Georgia) exclusivamente para el número protagonista de su bloque (hero, % de fila) — ver la Regla del Protagonista.
+- **Do** reservar la serif de Display (`Charter`/Georgia) exclusivamente para el número protagonista de su bloque (hero, % de fila) — ver la Regla del Protagonista.
 - **Do** transmitir estado con tono-sobre-tono (variante on-tint del color en texto/borde + `{color}-tint` fondo) en vez de fondo sólido + texto blanco, para cualquier badge, chip de stat o alerta de resultado — ver la Regla del Contraste en Oscuro.
 - **Do** usar el riel de 5px (`border-left`, en su variante on-tint) en cualquier fila/tarjeta nueva que represente un resultado propio, siempre declarado al final del stylesheet respecto de reglas de `border` en forma corta que la afecten.
 - **Do** dibujar cualquier ícono nuevo del reporte como SVG propio de trazo único (`currentColor`, `stroke-width="2"`) — nunca un emoji ni una entidad Unicode parada como ícono.
