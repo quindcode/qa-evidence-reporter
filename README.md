@@ -275,15 +275,16 @@ trampas reales del modelo actual que conviene conocer antes de empezar.
   `evidence.allowedFormats`, o archivos más grandes que
   `evidence.maxFileSizeMB`) esperando que "simplemente funcione" — se
   rechazan con error (`415`/`413`); ajustá la config antes si lo necesitás.
-- **No esperes más trazabilidad con Jira de la que hay.** Si configurás
-  `jira` (ver `## qa-config.json`), el botón "Adjuntar a Jira" del runner
-  sube el `.zip` del reporte como adjunto al issue que indiques y agrega un
+- **No esperes más trazabilidad de la que hay con Jira/Azure DevOps.** Si
+  configurás `jira` y/o `azureDevOps` (ver `## qa-config.json`), el botón
+  "Adjuntar a Jira"/"Adjuntar a Azure DevOps" del runner sube el `.zip` del
+  reporte como adjunto al issue/work item que indiques y agrega un
   comentario con un resumen (feature + scenarios + % aprobado/fallado/
-  omitido) — pero nada más: no sincroniza estado, y no lee nada de Jira de
-  vuelta. Azure DevOps todavía no tiene ninguna integración. El comentario
-  NUNCA incluye el detalle paso a paso ni la "descripción del defecto" de
-  cada step — eso sigue viviendo solo en la sesión y en el reporte adjunto;
-  si tu proceso necesita ese texto también en el ticket, copialo a mano.
+  omitido) — pero nada más: no sincroniza estado, y no lee nada de vuelta.
+  Ninguno de los dos comentarios incluye el detalle paso a paso ni la
+  "descripción del defecto" de cada step — eso sigue viviendo solo en la
+  sesión y en el reporte adjunto; si tu proceso necesita ese texto también
+  en el ticket, copialo a mano.
 - **No la uses como el único documento del test plan.** Cubre ejecución +
   evidencia + reporte de casos ya escritos como `.feature`, no la
   planificación (objetivos, riesgos, cronograma, criterios de
@@ -377,14 +378,17 @@ branding.
 | `branding.ctaColor`       | `string \| null`                         | Color de una acción destacada puntual (ej. "Exportar como ZIP").                                                           |
 | `jira.baseUrl`            | `string \| null`                         | URL del sitio Jira **Cloud** (ej. `"https://tuempresa.atlassian.net"`, sin `/rest/...`). `null` = integración desactivada. |
 | `jira.email`              | `string \| null`                         | Email de la cuenta Jira Cloud usada para autenticar. No es secreto — el token sí (ver más abajo).                          |
+| `azureDevOps.organizationUrl` | `string \| null`                     | URL de la organización de Azure DevOps (ej. `"https://dev.azure.com/tuorganizacion"`). `null` = integración desactivada.   |
+| `azureDevOps.project`     | `string \| null`                         | Nombre (o id) del proyecto de Azure DevOps donde viven los work items a publicar.                                          |
 | `reportTemplate`          | `string \| null`                         | Ruta a un template Handlebars custom, o `null` para usar el template embebido (`templates/default`).                       |
 
-`init` deja el bloque `jira` siempre presente pero desactivado
-(`baseUrl`/`email` en `null` — JSON no soporta comentarios, así que esta es
-la única forma de dejarlo "listo" sin arriesgar un archivo inválido), junto
-a un campo extra `jira._ejemplo` puramente documental (no lo lee el
-validador, no activa nada) que muestra la forma real de `baseUrl`/`email`.
-Para activar la integración, reemplazá los dos `null` por tus valores
+`init` deja los bloques `jira`/`azureDevOps` siempre presentes pero
+desactivados (sus campos en `null` — JSON no soporta comentarios, así que
+esta es la única forma de dejarlos "listos" sin arriesgar un archivo
+inválido), junto a un campo extra `_ejemplo` en cada uno, puramente
+documental (no lo lee el validador, no activa nada), que muestra la forma
+real de sus campos. Para activar cualquiera de las dos integraciones,
+reemplazá sus `null` por tus valores
 reales — `_ejemplo` podés borrarlo o dejarlo, es inofensivo.
 
 Los colores semánticos de resultado (verde=Pass, rojo=Fail, gris=Skip,
@@ -418,9 +422,11 @@ cualquiera, la API de adjuntos de Jira no distingue tipo) y:
   aprobados y 1 omitido cuenta como 1 scenario **omitido** — sus steps
   aprobados no "suman" por separado al total de aprobados.
 
-Solo **Jira Cloud** (`*.atlassian.net`) por ahora — Jira Server/Data Center
-no está soportado, y Azure DevOps todavía no tiene ninguna integración (ver
-la sección "Qué NO hacer" para el alcance exacto de lo que sube).
+Solo **Jira Cloud** (`*.atlassian.net`) — Jira Server/Data Center no está
+soportado (ver la sección "Qué NO hacer" para el alcance exacto de lo que
+sube). Para Azure DevOps, ver `## Integración con Azure DevOps` más abajo —
+es una integración independiente, con su propio bloque de config y su
+propio botón.
 
 #### Paso a paso: generar el token y probar la integración
 
@@ -497,6 +503,101 @@ la sección "Qué NO hacer" para el alcance exacto de lo que sube).
    herramienta (o buscalo a mano) y fijate que `qa-report.zip` esté en su
    lista de adjuntos, y que se haya agregado el comentario con el resumen
    (features, scenarios, porcentajes).
+
+### Integración con Azure DevOps (opcional)
+
+Con `azureDevOps.organizationUrl` y `azureDevOps.project` configurados (y
+la variable de entorno `AZURE_DEVOPS_PAT` seteada — nunca en
+`qa-config.json`, es secreto), el panel de "Reporte" del runner
+(`qa-evidence-reporter run`) muestra un botón **"Adjuntar a Azure
+DevOps"**: escribís el ID numérico de un work item (historia, bug, task —
+cualquiera, la API de adjuntos no distingue tipo) y:
+
+- sube un **`.zip`** del reporte completo como adjunto a ese work item —
+  mismo criterio que Jira (ver arriba): nunca solo el `index.html`, y si
+  volvés a publicar sobre el mismo work item, el adjunto anterior llamado
+  exactamente `qa-report.zip` se **borra y se reemplaza** por el nuevo.
+- agrega un **comentario** al work item con el mismo resumen que Jira
+  (feature + scenarios + % aprobado/fallado/omitido, calculado sobre
+  SCENARIOS completos — ver arriba), aunque acá es HTML simple en vez de
+  un documento ADF (así funciona la API de comentarios de Azure DevOps).
+
+Es una integración **independiente** de Jira — podés tener las dos
+activas a la vez (cada una con su propio botón), o solo una, según qué
+gestor use tu equipo.
+
+#### Paso a paso: generar el token y probar la integración
+
+1. **Generá un Personal Access Token (PAT)**, con la cuenta de Azure DevOps
+   que vas a usar para publicar (necesita el scope **"Work Items" → Read &
+   Write** como mínimo):
+   - Entrá a tu organización en <https://dev.azure.com/> → ícono de
+     usuario (arriba a la derecha) → "Personal access tokens" → "New
+     Token".
+   - Ponele un nombre que lo identifique (ej. `qa-evidence-reporter`),
+     elegí una fecha de expiración, y marcá el scope **Work Items (Read &
+     Write)** — con eso alcanza, no hace falta darle acceso a todo.
+   - Copialo apenas se genera — Azure DevOps no lo vuelve a mostrar
+     después; si lo perdés, hay que crear uno nuevo y revocar el viejo.
+
+2. **Exportá el PAT como variable de entorno**, en la terminal donde vas a
+   trabajar (nunca lo pegues en un archivo, y nunca lo commitees):
+
+   ```bash
+   export AZURE_DEVOPS_PAT="EL_PAT_QUE_COPIASTE"
+   ```
+
+3. **Probá las credenciales solas, antes de tocar la herramienta** (no hace
+   falta tener un proyecto QA armado todavía). A diferencia de Jira, un PAT
+   de Azure DevOps autentica con Basic auth de usuario **vacío** (`:PAT`):
+
+   ```bash
+   curl -u ":$AZURE_DEVOPS_PAT" \
+     "https://dev.azure.com/tuorganizacion/_apis/projects/tu-proyecto?api-version=7.1"
+   ```
+
+   - Si devuelve un JSON con los datos del proyecto → el PAT es válido y
+     tiene acceso a ese proyecto, seguí al paso 4.
+   - Si devuelve `401`/`Unauthorized` → el PAT está mal copiado, vencido, o
+     le falta el scope "Work Items" — repetí el paso 1.
+   - Si devuelve `404` → revisá que `tuorganizacion`/`tu-proyecto` sean
+     correctos (mayúsculas/espacios incluidos).
+
+4. **Configurá el proyecto QA** (el que usa `init`/`run`, no este repo): en
+   su `qa-config.json`, agregá el bloque `azureDevOps`. Como referencia,
+   así queda con la forma esperada — dejalo **comentado** hasta que lo
+   necesites (mismo motivo que con `jira`: JSON no soporta comentarios, así
+   que al descomentarlo hay que borrar los `//` de cada línea):
+
+   ```jsonc
+   // "azureDevOps": {
+   //   "organizationUrl": "https://dev.azure.com/tuorganizacion",
+   //   "project": "Mi Proyecto"
+   // }
+   ```
+
+5. **Volvé a exportar el PAT**, en la terminal donde vas a correr
+   `qa-evidence-reporter run` (nunca en el archivo, nunca commiteado — si es
+   la misma terminal del paso 2, con que siga exportada alcanza; si abriste
+   una nueva, repetí el comando):
+
+   ```bash
+   export AZURE_DEVOPS_PAT="EL_PAT_QUE_COPIASTE"
+   ```
+
+6. **Probá el flujo completo**: `qa-evidence-reporter run`, seleccioná
+   alguna feature, marcá al menos un step, generá el reporte, y en el panel
+   de "Reporte" escribí el ID de un work item real al que tengas acceso
+   (ej. `123`) → **"Adjuntar a Azure DevOps"**. Si todo salió bien aparece
+   un link "Ver work item en Azure DevOps"; si algo falla, el mensaje de
+   error (banner rojo) dice cuál de los casos fue: sin reporte generado
+   todavía, Azure DevOps no configurado, el work item no existe (o no
+   tenés acceso), o falló la autenticación.
+
+7. **Confirmá en Azure DevOps**: abrí el work item por el link que te dio
+   la herramienta (o buscalo a mano) y fijate que `qa-report.zip` esté en
+   su pestaña de "Attachments", y que se haya agregado el comentario con
+   el resumen (features, scenarios, porcentajes) en "Discussion".
 
 ## Proyecto de ejemplo (opcional)
 

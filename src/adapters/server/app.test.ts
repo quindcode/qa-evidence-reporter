@@ -34,6 +34,7 @@ async function buildContext(
   overrides: Partial<QaConfig> = {},
   brandingLogoAbsolutePath: string | null = null,
   jiraApiToken: string | undefined = undefined,
+  azureDevOpsPat: string | undefined = undefined,
 ): Promise<ServerContext> {
   const featuresDir = join(projectRoot, 'features');
   const evidenceBaseDir = join(projectRoot, 'evidence');
@@ -58,6 +59,7 @@ async function buildContext(
     templateDir: DEFAULT_TEMPLATE_DIR,
     brandingLogoAbsolutePath,
     jiraApiToken,
+    azureDevOpsPat,
   };
 }
 
@@ -695,6 +697,31 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
   });
 
+  /** Selecciona "login.feature", marca AMBOS steps del scenario como pass, y genera el reporte — deja `context.reportsDir` con un `index.html` real. Compartida entre los describe de "publish-jira" y "publish-azure-devops". */
+  async function selectAndGenerateReport(app: ReturnType<typeof createApp>): Promise<void> {
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const firstStepId: string = selectResponse.body.currentStep.step.id;
+    await request(app)
+      .post(`/api/session/step/${firstStepId}/result`)
+      .send({ result: 'pass' })
+      .expect(200);
+
+    const navigateResponse = await request(app)
+      .post('/api/session/navigate')
+      .send({ direction: 'next' })
+      .expect(200);
+    const secondStepId: string = navigateResponse.body.currentStep.step.id;
+    await request(app)
+      .post(`/api/session/step/${secondStepId}/result`)
+      .send({ result: 'pass' })
+      .expect(200);
+
+    await request(app).post('/api/report/generate').expect(201);
+  }
+
   describe('POST /api/report/publish-jira', () => {
     const JIRA_CONFIG_OVERRIDE = {
       jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
@@ -703,31 +730,6 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     afterEach(() => {
       vi.unstubAllGlobals();
     });
-
-    /** Selecciona "login.feature", marca AMBOS steps del scenario como pass, y genera el reporte — deja `context.reportsDir` con un `index.html` real. */
-    async function selectAndGenerateReport(app: ReturnType<typeof createApp>): Promise<void> {
-      const selectResponse = await request(app)
-        .post('/api/session/select')
-        .send({ featureIds: ['login.feature'] })
-        .expect(201);
-      const firstStepId: string = selectResponse.body.currentStep.step.id;
-      await request(app)
-        .post(`/api/session/step/${firstStepId}/result`)
-        .send({ result: 'pass' })
-        .expect(200);
-
-      const navigateResponse = await request(app)
-        .post('/api/session/navigate')
-        .send({ direction: 'next' })
-        .expect(200);
-      const secondStepId: string = navigateResponse.body.currentStep.step.id;
-      await request(app)
-        .post(`/api/session/step/${secondStepId}/result`)
-        .send({ result: 'pass' })
-        .expect(200);
-
-      await request(app).post('/api/report/generate').expect(201);
-    }
 
     it('sin reporte generado -> 404 NO_REPORT_GENERATED, sin llamar a Jira', async () => {
       const fetchMock = vi.fn();
@@ -905,6 +907,174 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
         .expect(502);
 
       expect(response.body.error.code).toBe('JIRA_AUTHENTICATION_ERROR');
+    });
+  });
+
+  describe('POST /api/report/publish-azure-devops', () => {
+    const AZURE_DEVOPS_CONFIG_OVERRIDE = {
+      azureDevOps: { organizationUrl: 'https://dev.azure.com/tuorg', project: 'Checkout' },
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** Mock de `fetch` para el flujo feliz completo: upload de adjunto (POST), chequeo de relaciones (GET, sin duplicados), PATCH del work item, y comentario (POST a .../comments). */
+    function mockHappyPathFetch(): ReturnType<typeof vi.fn> {
+      return vi.fn().mockImplementation((url: string, init: RequestInit) => {
+        if (init.method === 'GET') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({ relations: [] }),
+          });
+        }
+        if (init.method === 'POST' && url.includes('/comments')) {
+          return Promise.resolve({ ok: true, status: 200, text: async () => '' });
+        }
+        if (init.method === 'POST' && url.includes('/_apis/wit/attachments')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: async () => '',
+            json: async () => ({ id: 'att-1', url: 'https://dev.azure.com/tuorg/_apis/wit/attachments/att-1' }),
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, text: async () => '' });
+      });
+    }
+
+    it('sin reporte generado -> 404 NO_REPORT_GENERATED, sin llamar a Azure DevOps', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, AZURE_DEVOPS_CONFIG_OVERRIDE, null, undefined, 'un-pat'),
+      );
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 123 })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('sin "workItemId" (o no numérico) en el body -> 400 INVALID_REQUEST_BODY', async () => {
+      const app = createApp(
+        await buildContext(projectRoot, AZURE_DEVOPS_CONFIG_OVERRIDE, null, undefined, 'un-pat'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 'no-es-un-numero' })
+        .expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_REQUEST_BODY');
+    });
+
+    it('Azure DevOps no configurado (sin organizationUrl/project) -> 404 AZURE_DEVOPS_NOT_CONFIGURED, sin llamar a fetch', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(await buildContext(projectRoot));
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 123 })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('AZURE_DEVOPS_NOT_CONFIGURED');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('publica exitosamente -> 201 + {workItemId, workItemUrl}, subiendo el adjunto y agregando el comentario', async () => {
+      const fetchMock = mockHappyPathFetch();
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, AZURE_DEVOPS_CONFIG_OVERRIDE, null, undefined, 'un-pat'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 42 })
+        .expect(201);
+
+      expect(response.body).toEqual({
+        workItemId: 42,
+        workItemUrl: 'https://dev.azure.com/tuorg/Checkout/_workitems/edit/42',
+      });
+      // 1) POST del adjunto, 2) GET de chequeo de duplicados, 3) PATCH del work item, 4) POST del comentario.
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+
+      const commentCall = fetchMock.mock.calls.find(([url]: [string]) => url.includes('/comments'));
+      const [, commentInit] = commentCall as [string, RequestInit];
+      const commentBody = JSON.parse(commentInit.body as string) as { text: string };
+      expect(commentBody.text).toContain('Inicio de sesión');
+      expect(commentBody.text).toContain('Login exitoso — Aprobado');
+      expect(commentBody.text).toContain('Aprobado: 100% (1/1)');
+    });
+
+    it('si el adjunto sube pero "addComment" falla, el request completo falla (mismo criterio que cualquier error de Azure DevOps)', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string, init: RequestInit) => {
+        if (init.method === 'GET') {
+          return Promise.resolve({ ok: true, status: 200, text: async () => '', json: async () => ({ relations: [] }) });
+        }
+        if (init.method === 'POST' && url.includes('/comments')) {
+          return Promise.resolve({ ok: false, status: 500, text: async () => 'boom' });
+        }
+        if (init.method === 'POST') {
+          return Promise.resolve({ ok: true, status: 200, text: async () => '', json: async () => ({ id: 'a1', url: 'https://x/att/a1' }) });
+        }
+        return Promise.resolve({ ok: true, status: 200, text: async () => '' });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, AZURE_DEVOPS_CONFIG_OVERRIDE, null, undefined, 'un-pat'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 42 })
+        .expect(502);
+
+      expect(response.body.error.code).toBe('AZURE_DEVOPS_REQUEST_ERROR');
+    });
+
+    it('Azure DevOps responde 404 (work item inexistente) -> 404 AZURE_DEVOPS_WORK_ITEM_NOT_FOUND', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, text: async () => '' });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, AZURE_DEVOPS_CONFIG_OVERRIDE, null, undefined, 'un-pat'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 404 })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('AZURE_DEVOPS_WORK_ITEM_NOT_FOUND');
+    });
+
+    it('Azure DevOps responde 401 (PAT inválido) -> 502 AZURE_DEVOPS_AUTHENTICATION_ERROR', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => '' });
+      vi.stubGlobal('fetch', fetchMock);
+      const app = createApp(
+        await buildContext(projectRoot, AZURE_DEVOPS_CONFIG_OVERRIDE, null, undefined, 'un-pat'),
+      );
+      await selectAndGenerateReport(app);
+
+      const response = await request(app)
+        .post('/api/report/publish-azure-devops')
+        .send({ workItemId: 1 })
+        .expect(502);
+
+      expect(response.body.error.code).toBe('AZURE_DEVOPS_AUTHENTICATION_ERROR');
     });
   });
 

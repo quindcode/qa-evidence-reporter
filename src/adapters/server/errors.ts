@@ -41,6 +41,10 @@ const ERROR_STATUS_BY_CODE: Readonly<Record<string, number>> = {
   JIRA_ISSUE_NOT_FOUND: 404, // mismo criterio que SESSION_NOT_FOUND
   JIRA_AUTHENTICATION_ERROR: 502, // este server no pudo autenticarse contra Jira — no es culpa del caller
   JIRA_REQUEST_ERROR: 502, // fallo genérico hablando con Jira (red, 5xx de Jira, etc.)
+  AZURE_DEVOPS_NOT_CONFIGURED: 404, // mismo criterio que JIRA_NOT_CONFIGURED
+  AZURE_DEVOPS_WORK_ITEM_NOT_FOUND: 404, // mismo criterio que JIRA_ISSUE_NOT_FOUND
+  AZURE_DEVOPS_AUTHENTICATION_ERROR: 502, // mismo criterio que JIRA_AUTHENTICATION_ERROR
+  AZURE_DEVOPS_REQUEST_ERROR: 502, // mismo criterio que JIRA_REQUEST_ERROR
   // `adapters/server` (ver constantes arriba)
   [SESSION_ALREADY_IN_PROGRESS]: 409,
   [NOTHING_TO_REPORT]: 404,

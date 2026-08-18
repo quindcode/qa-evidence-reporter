@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import express, { type Express, type Response } from 'express';
 
+import { createAzureDevOpsClient } from '../../core/azureDevOps/index.js';
 import { createEvidenceStore } from '../../core/evidence/index.js';
 import { createJiraClient } from '../../core/jira/index.js';
 import { createGherkinParser } from '../../core/parser/index.js';
@@ -43,6 +44,11 @@ export function createApp(context: ServerContext): Express {
       baseUrl: context.config.jira.baseUrl,
       email: context.config.jira.email,
       apiToken: context.jiraApiToken,
+    }),
+    azureDevOpsClient: createAzureDevOpsClient({
+      organizationUrl: context.config.azureDevOps.organizationUrl,
+      project: context.config.azureDevOps.project,
+      personalAccessToken: context.azureDevOpsPat,
     }),
   };
 

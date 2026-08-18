@@ -50,9 +50,13 @@ const CURRENT_STEP = {
  * `fetch` mock mínimo: responde `{ evidenceFiles: [] }` para cualquier GET
  * (la carga de evidencia al montar el Runner), `{ closed: true }` para
  * `POST /api/session/close`, `{ reportUrl }` para `POST /api/report/generate`,
- * y (según `jira`) éxito/fallo para `POST /api/report/publish-jira`.
+ * y (según `jira`/`azureDevOps`) éxito/fallo para
+ * `POST /api/report/publish-jira`/`POST /api/report/publish-azure-devops`.
  */
-function mockFetch(jira: { ok?: boolean; status?: number } = {}): ReturnType<typeof vi.fn> {
+function mockFetch(
+  jira: { ok?: boolean; status?: number } = {},
+  azureDevOps: { ok?: boolean; status?: number } = {},
+): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url.includes('/api/report/publish-jira')) {
       const ok = jira.ok ?? true;
@@ -62,6 +66,27 @@ function mockFetch(jira: { ok?: boolean; status?: number } = {}): ReturnType<typ
       return Promise.resolve({
         ok,
         status: ok ? 201 : (jira.status ?? 404),
+        headers: { get: () => 'application/json' },
+        json: async () => body,
+      });
+    }
+
+    if (url.includes('/api/report/publish-azure-devops')) {
+      const ok = azureDevOps.ok ?? true;
+      const body = ok
+        ? {
+            workItemId: 123,
+            workItemUrl: 'https://dev.azure.com/tuorg/Checkout/_workitems/edit/123',
+          }
+        : {
+            error: {
+              code: 'AZURE_DEVOPS_WORK_ITEM_NOT_FOUND',
+              message: 'No se encontró el work item.',
+            },
+          };
+      return Promise.resolve({
+        ok,
+        status: ok ? 201 : (azureDevOps.status ?? 404),
         headers: { get: () => 'application/json' },
         json: async () => body,
       });
@@ -96,6 +121,7 @@ describe('Runner — Cerrar sesión', () => {
         onError={vi.fn()}
         onSessionClosed={onSessionClosed}
         jiraEnabled={false}
+        azureDevOpsEnabled={false}
       />,
     );
 
@@ -129,6 +155,7 @@ describe('Runner — Cerrar sesión', () => {
         onError={vi.fn()}
         onSessionClosed={onSessionClosed}
         jiraEnabled={false}
+        azureDevOpsEnabled={false}
       />,
     );
 
@@ -152,6 +179,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
+        azureDevOpsEnabled={false}
       />,
     );
 
@@ -174,6 +202,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
         jiraEnabled={true}
+        azureDevOpsEnabled={false}
       />,
     );
 
@@ -223,6 +252,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onError={onError}
         onSessionClosed={vi.fn()}
         jiraEnabled={true}
+        azureDevOpsEnabled={false}
       />,
     );
 
@@ -242,6 +272,125 @@ describe('Runner — Adjuntar a Jira', () => {
   });
 });
 
+describe('Runner — Adjuntar a Azure DevOps', () => {
+  it('con azureDevOpsEnabled=false, el botón nunca aparece (ni siquiera con reporte generado)', async () => {
+    mockFetch();
+
+    render(
+      <Runner
+        session={SESSION}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={false}
+        azureDevOpsEnabled={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generar reporte/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /ver reporte/i })).toBeInTheDocument(),
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /adjuntar a azure devops/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('con azureDevOpsEnabled=true, el botón aparece solo tras generar el reporte, se habilita con un ID numérico, y publica con éxito', async () => {
+    const fetchMock = mockFetch();
+
+    render(
+      <Runner
+        session={SESSION}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={false}
+        azureDevOpsEnabled={true}
+      />,
+    );
+
+    // Sin reporte generado todavía: ni el input ni el botón existen.
+    expect(
+      screen.queryByRole('button', { name: /adjuntar a azure devops/i }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /generar reporte/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /ver reporte/i })).toBeInTheDocument(),
+    );
+
+    const publishButton = screen.getByRole('button', { name: /adjuntar a azure devops/i });
+    expect(publishButton).toBeDisabled();
+
+    // Un valor no numérico nunca habilita el botón.
+    fireEvent.input(screen.getByLabelText(/id del work item de azure devops/i), {
+      target: { value: 'no-es-un-numero' },
+    });
+    expect(publishButton).toBeDisabled();
+
+    fireEvent.input(screen.getByLabelText(/id del work item de azure devops/i), {
+      target: { value: '123' },
+    });
+    expect(publishButton).not.toBeDisabled();
+
+    fireEvent.click(publishButton);
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /ver work item en azure devops/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('link', { name: /ver work item en azure devops/i })).toHaveAttribute(
+      'href',
+      'https://dev.azure.com/tuorg/Checkout/_workitems/edit/123',
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/report/publish-azure-devops',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ workItemId: 123 }),
+      }),
+    );
+  });
+
+  it('con azureDevOpsEnabled=true, un fallo de Azure DevOps llama a onError en vez de mostrar el link de éxito', async () => {
+    mockFetch({}, { ok: false, status: 404 });
+    const onError = vi.fn();
+
+    render(
+      <Runner
+        session={SESSION}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={onError}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={false}
+        azureDevOpsEnabled={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generar reporte/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /ver reporte/i })).toBeInTheDocument(),
+    );
+
+    fireEvent.input(screen.getByLabelText(/id del work item de azure devops/i), {
+      target: { value: '404' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /adjuntar a azure devops/i }));
+
+    await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'AZURE_DEVOPS_WORK_ITEM_NOT_FOUND' }),
+    );
+    expect(
+      screen.queryByRole('link', { name: /ver work item en azure devops/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('Runner — Navegación', () => {
   it('en el último step de la sesión, el botón "Siguiente" desaparece (no solo se deshabilita)', () => {
     // SESSION (fixture del tope del archivo) tiene una sola feature, un solo
@@ -257,6 +406,7 @@ describe('Runner — Navegación', () => {
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
+        azureDevOpsEnabled={false}
       />,
     );
 
@@ -298,6 +448,7 @@ describe('Runner — Navegación', () => {
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
+        azureDevOpsEnabled={false}
       />,
     );
 

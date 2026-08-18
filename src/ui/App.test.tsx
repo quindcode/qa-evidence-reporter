@@ -38,6 +38,7 @@ describe('App — branding', () => {
         ctaColor: null,
       },
       jira: { enabled: false },
+      azureDevOps: { enabled: false },
     });
 
     render(<App />);
@@ -66,6 +67,7 @@ describe('App — branding', () => {
         ctaColor: '#ff5530',
       },
       jira: { enabled: false },
+      azureDevOps: { enabled: false },
     });
 
     render(<App />);
@@ -100,6 +102,7 @@ describe('App — branding', () => {
         ctaColor: null,
       },
       jira: { enabled: false },
+      azureDevOps: { enabled: false },
     });
 
     render(<App />);

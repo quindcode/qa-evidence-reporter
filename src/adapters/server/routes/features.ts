@@ -65,6 +65,13 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
         jira: {
           enabled: Boolean(context.config.jira.baseUrl && context.config.jira.email),
         },
+        // Mismo criterio que `jira` de arriba: solo el booleano derivado
+        // (ni `organizationUrl`/`project` ni el PAT) se expone a la UI.
+        azureDevOps: {
+          enabled: Boolean(
+            context.config.azureDevOps.organizationUrl && context.config.azureDevOps.project,
+          ),
+        },
       });
     }),
   );

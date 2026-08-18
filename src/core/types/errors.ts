@@ -306,3 +306,62 @@ export class JiraRequestError extends QaError {
     super(`Falló la solicitud a Jira: ${reason}`, 'JIRA_REQUEST_ERROR', options);
   }
 }
+
+/**
+ * Se lanza cuando `AzureDevOpsClient.attachReport()`/`.addComment()`
+ * (`core/azureDevOps`) se llaman sin `organizationUrl`/`project`
+ * (`qa-config.json` → `azureDevOps`) o sin el PAT (variable de entorno
+ * `AZURE_DEVOPS_PAT`) configurados. Mismo criterio que
+ * `JiraNotConfiguredError`: `createAzureDevOpsClient` es una factory sin
+ * I/O, nunca lanza al construirse — esto recién se valida cuando se intenta
+ * publicar de verdad.
+ */
+export class AzureDevOpsNotConfiguredError extends QaError {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Azure DevOps no está configurado — falta "azureDevOps.organizationUrl"/' +
+        '"azureDevOps.project" en qa-config.json, o la variable de entorno AZURE_DEVOPS_PAT.',
+      'AZURE_DEVOPS_NOT_CONFIGURED',
+      options,
+    );
+  }
+}
+
+/** Se lanza cuando Azure DevOps responde 404 al intentar adjuntar un archivo o comentar en `workItemId` (no existe, o la cuenta no tiene permiso para verlo). */
+export class AzureDevOpsWorkItemNotFoundError extends QaError {
+  readonly workItemId: number;
+
+  constructor(workItemId: number, options?: ErrorOptions) {
+    super(
+      `No se encontró el work item de Azure DevOps #${workItemId} (o no hay permiso para verlo).`,
+      'AZURE_DEVOPS_WORK_ITEM_NOT_FOUND',
+      options,
+    );
+    this.workItemId = workItemId;
+  }
+}
+
+/** Se lanza cuando Azure DevOps responde 401/403 — el PAT configurado no autenticó correctamente. */
+export class AzureDevOpsAuthenticationError extends QaError {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Azure DevOps rechazó las credenciales configuradas (AZURE_DEVOPS_PAT) — verificá que el ' +
+        'token no haya vencido, sea inválido, o le falte el scope "Work Items (Read & Write)".',
+      'AZURE_DEVOPS_AUTHENTICATION_ERROR',
+      options,
+    );
+  }
+}
+
+/**
+ * Fallo genérico al hablar con Azure DevOps: sin conexión de red, timeout, o
+ * cualquier respuesta no-2xx que no sea 401/403/404 (ver
+ * `AzureDevOpsAuthenticationError`/`AzureDevOpsWorkItemNotFoundError` para
+ * esos dos casos específicos). Siempre envuelve la causa real en
+ * `options.cause` cuando la hay.
+ */
+export class AzureDevOpsRequestError extends QaError {
+  constructor(reason: string, options?: ErrorOptions) {
+    super(`Falló la solicitud a Azure DevOps: ${reason}`, 'AZURE_DEVOPS_REQUEST_ERROR', options);
+  }
+}

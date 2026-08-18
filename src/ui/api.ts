@@ -1,4 +1,5 @@
 import type {
+  AzureDevOpsFeatureConfig,
   Branding,
   CurrentStepInfo,
   EvidenceFile,
@@ -75,6 +76,7 @@ export interface FeaturesResponse {
   projectName: string;
   branding: Branding;
   jira: JiraFeatureConfig;
+  azureDevOps: AzureDevOpsFeatureConfig;
 }
 
 export interface SessionResponse {
@@ -98,6 +100,11 @@ export interface ReportGenerateResponse {
 export interface JiraPublishResponse {
   issueKey: string;
   issueUrl: string;
+}
+
+export interface AzureDevOpsPublishResponse {
+  workItemId: number;
+  workItemUrl: string;
 }
 
 /**
@@ -196,6 +203,14 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issueKey }),
+    });
+  },
+
+  publishToAzureDevOps(workItemId: number): Promise<AzureDevOpsPublishResponse> {
+    return request<AzureDevOpsPublishResponse>('/api/report/publish-azure-devops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workItemId }),
     });
   },
 

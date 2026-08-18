@@ -74,6 +74,7 @@ export function App(): JSX.Element {
   const [projectName, setProjectName] = useState('qa-evidence-reporter');
   const [branding, setBranding] = useState<Branding>(NO_BRANDING);
   const [jiraEnabled, setJiraEnabled] = useState(false);
+  const [azureDevOpsEnabled, setAzureDevOpsEnabled] = useState(false);
 
   const loadFeatures = useCallback(async () => {
     try {
@@ -84,6 +85,7 @@ export function App(): JSX.Element {
       setBranding(response.branding);
       applyBranding(response.branding);
       setJiraEnabled(response.jira.enabled);
+      setAzureDevOpsEnabled(response.azureDevOps.enabled);
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err : new ApiRequestError('UNKNOWN_ERROR', String(err)),
@@ -186,6 +188,7 @@ export function App(): JSX.Element {
             onError={setError}
             onSessionClosed={handleSessionClosed}
             jiraEnabled={jiraEnabled}
+            azureDevOpsEnabled={azureDevOpsEnabled}
           />
         )}
       </main>

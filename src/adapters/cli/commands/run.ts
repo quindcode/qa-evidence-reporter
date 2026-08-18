@@ -114,6 +114,7 @@ export async function runRun(cwd: string, deps: RunCommandDeps = {}): Promise<Ru
       ? resolve(cwd, config.branding.logoPath)
       : null,
     jiraApiToken: process.env.JIRA_API_TOKEN,
+    azureDevOpsPat: process.env.AZURE_DEVOPS_PAT,
   };
 
   const startServerFn = deps.startServer ?? startServerReal;

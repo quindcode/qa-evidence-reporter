@@ -124,6 +124,18 @@ export interface JiraFeatureConfig {
 }
 
 /**
+ * Forma de `GET /api/features` -> `azureDevOps` (ver `routes/features.ts`).
+ * Mismo criterio que `JiraFeatureConfig`: solo el booleano derivado de
+ * `qa-config.json` -> `azureDevOps.organizationUrl`/`azureDevOps.project`
+ * — ni esos dos campos ni el PAT (que nunca sale del server) se exponen a
+ * la UI, alcanza con saber si mostrar o no el botón "Adjuntar a Azure
+ * DevOps".
+ */
+export interface AzureDevOpsFeatureConfig {
+  enabled: boolean;
+}
+
+/**
  * Deriva el resultado de un scenario a partir de sus steps — misma tabla de
  * prioridad que `core/types/session.ts` (`deriveScenarioResult`,
  * `fail > pending > skip > pass`), duplicada acá por la misma razón que el

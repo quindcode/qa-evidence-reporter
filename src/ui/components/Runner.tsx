@@ -20,6 +20,8 @@ export interface RunnerProps {
   onSessionClosed: () => void;
   /** `GET /api/features` -> `jira.enabled` (ver `App.tsx`) — si es `false`, el botón "Adjuntar a Jira" del panel de reporte no se muestra en absoluto. */
   jiraEnabled: boolean;
+  /** `GET /api/features` -> `azureDevOps.enabled` (ver `App.tsx`) — si es `false`, el botón "Adjuntar a Azure DevOps" del panel de reporte no se muestra en absoluto. */
+  azureDevOpsEnabled: boolean;
 }
 
 const STEP_KEYWORD_LABEL: Record<string, string> = {
@@ -40,6 +42,7 @@ export function Runner({
   onError,
   onSessionClosed,
   jiraEnabled,
+  azureDevOpsEnabled,
 }: RunnerProps): JSX.Element {
   const [evidenceFiles, setEvidenceFiles] = useState<EvidenceFile[]>([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
@@ -50,6 +53,8 @@ export function Runner({
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [jiraIssueKey, setJiraIssueKey] = useState('');
   const [jiraPublishedUrl, setJiraPublishedUrl] = useState<string | null>(null);
+  const [azureDevOpsWorkItemId, setAzureDevOpsWorkItemId] = useState('');
+  const [azureDevOpsPublishedUrl, setAzureDevOpsPublishedUrl] = useState<string | null>(null);
   const defectFieldRef = useRef<HTMLTextAreaElement>(null);
 
   const stepId = currentStep?.step.id;
@@ -206,6 +211,21 @@ export function Runner({
     }
   }
 
+  async function handlePublishToAzureDevOps(): Promise<void> {
+    const workItemId = Number(azureDevOpsWorkItemId.trim());
+    if (busy || !Number.isInteger(workItemId) || workItemId <= 0) return;
+
+    setBusy(true);
+    try {
+      const response = await api.publishToAzureDevOps(workItemId);
+      setAzureDevOpsPublishedUrl(response.workItemUrl);
+    } catch (error) {
+      onError(error as ApiRequestError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /**
    * "Cerrar sesión" — agregado tras un incidente real (ver ARCHITECTURE.md,
    * "Cambios registrados"): una vez que el server exige `?force=true` para
@@ -251,6 +271,7 @@ export function Runner({
   const currentFeature = session.selectedFeatures[session.currentPosition.featureIndex];
   const currentScenario = currentFeature?.scenarios[session.currentPosition.scenarioIndex];
   const isLastStep = isLastStepInSession(session);
+  const azureDevOpsWorkItemIdValid = /^\d+$/.test(azureDevOpsWorkItemId.trim());
 
   return (
     <div class="runner">
@@ -388,6 +409,40 @@ export function Runner({
                     rel="noreferrer"
                   >
                     Ver issue en Jira
+                  </a>
+                )}
+              </>
+            )}
+            {reportUrl && azureDevOpsEnabled && (
+              <>
+                <input
+                  type="text"
+                  class="field__input"
+                  style={{ maxWidth: '10rem' }}
+                  placeholder="Work item (ej. 123)"
+                  value={azureDevOpsWorkItemId}
+                  onInput={(event) =>
+                    setAzureDevOpsWorkItemId((event.target as HTMLInputElement).value)
+                  }
+                  disabled={busy}
+                  aria-label="ID del work item de Azure DevOps"
+                />
+                <button
+                  type="button"
+                  class="button"
+                  onClick={() => void handlePublishToAzureDevOps()}
+                  disabled={busy || !azureDevOpsWorkItemIdValid}
+                >
+                  Adjuntar a Azure DevOps
+                </button>
+                {azureDevOpsPublishedUrl && (
+                  <a
+                    class="button button--cta"
+                    href={azureDevOpsPublishedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Ver work item en Azure DevOps
                   </a>
                 )}
               </>

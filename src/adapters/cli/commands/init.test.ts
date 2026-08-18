@@ -66,6 +66,14 @@ describe('runInit', () => {
           email: 'tu-email@quind.io',
         },
       },
+      azureDevOps: {
+        organizationUrl: null,
+        project: null,
+        _ejemplo: {
+          organizationUrl: 'https://dev.azure.com/tuorganizacion',
+          project: 'Mi Proyecto',
+        },
+      },
       reportTemplate: null,
     });
 
@@ -91,13 +99,15 @@ describe('runInit', () => {
     // Debe haber impreso próximos pasos accionables, no quedar en silencio.
     expect(messages.join('\n')).toMatch(/próximos pasos/i);
 
-    // "jira._ejemplo" es documental (no forma parte de JiraConfigSchema) —
-    // el ConfigLoader REAL (no solo JSON.parse) debe poder cargar el
-    // archivo tal cual "init" lo deja, sin que esa clave extra lo rompa, y
-    // sin que la integración quede activada por accidente.
+    // "jira._ejemplo"/"azureDevOps._ejemplo" son documentales (no forman
+    // parte de sus schemas) — el ConfigLoader REAL (no solo JSON.parse)
+    // debe poder cargar el archivo tal cual "init" lo deja, sin que esas
+    // claves extra lo rompan, y sin que ninguna integración quede activada
+    // por accidente.
     const configLoader = createConfigLoader();
     const loadedConfig = await configLoader.loadConfig(join(cwd, 'qa-config.json'));
     expect(loadedConfig.jira).toEqual({ baseUrl: null, email: null });
+    expect(loadedConfig.azureDevOps).toEqual({ organizationUrl: null, project: null });
   });
 
   it('usa --name para el projectName en vez del nombre de la carpeta', async () => {

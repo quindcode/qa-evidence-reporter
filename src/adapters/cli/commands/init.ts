@@ -171,6 +171,15 @@ export async function runInit(
  * genérica, nunca la cuenta real de una persona puntual: `init` scaffolds
  * proyectos para cualquier QA del equipo, no solo para quien lo pidió esta
  * vez.
+ *
+ * Decisión de diseño (`azureDevOps`, mismo criterio que `jira`): bloque
+ * siempre presente con `organizationUrl`/`project` en `null` (integración
+ * desactivada, JSON válido desde el día uno) más un `_ejemplo` documental.
+ * A diferencia de `jira._ejemplo.email`, acá NINGÚN campo usa un dato real
+ * de la empresa — ni `organizationUrl` ni `project` son compartidos por
+ * todo el equipo (cada proyecto/cliente puede vivir en una organización de
+ * Azure DevOps distinta), así que los dos quedan como placeholders
+ * genéricos.
  */
 function buildConfigFileContents(projectName: string): string {
   const config = {
@@ -198,6 +207,14 @@ function buildConfigFileContents(projectName: string): string {
         email: 'tu-email@quind.io',
       },
     },
+    azureDevOps: {
+      organizationUrl: null,
+      project: null,
+      _ejemplo: {
+        organizationUrl: 'https://dev.azure.com/tuorganizacion',
+        project: 'Mi Proyecto',
+      },
+    },
     reportTemplate: null,
   };
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -217,7 +234,9 @@ function printNextSteps(
       'El branding (logo + colores estándar de Quind) ya viene configurado — no hace falta tocarlo. ' +
       'El bloque "jira" queda con baseUrl/email en null (integración desactivada) — completalo ' +
       'con tus valores reales (mismo formato que "jira._ejemplo", que podés borrar) solo si vas ' +
-      'a publicar reportes a Jira Cloud (ver "Integración con Jira Cloud" en el README).',
+      'a publicar reportes a Jira Cloud (ver "Integración con Jira Cloud" en el README). Lo ' +
+      'mismo aplica a "azureDevOps" (organizationUrl/project), si vas a publicar a Azure DevOps ' +
+      'en cambio (ver "Integración con Azure DevOps" en el README).',
   );
   print('  2. Agregá tus archivos .feature en "features/" (o editá/borrá el ejemplo incluido).');
   print(

@@ -35,6 +35,7 @@ describe('createConfigLoader', () => {
           ctaColor: '#ff5530',
         },
         jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
+        azureDevOps: { organizationUrl: 'https://dev.azure.com/tuorg', project: 'Checkout' },
         reportTemplate: './my-template',
       };
       const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(full));
@@ -92,6 +93,7 @@ describe('createConfigLoader', () => {
           ctaColor: null,
         },
         jira: { baseUrl: null, email: null },
+        azureDevOps: { organizationUrl: null, project: null },
         reportTemplate: null,
       });
     });
@@ -125,6 +127,46 @@ describe('createConfigLoader', () => {
         expect(error).toBeInstanceOf(ConfigValidationError);
         const configError = error as ConfigValidationError;
         expect(configError.issues).toEqual([expect.objectContaining({ path: 'jira.email' })]);
+        return true;
+      });
+    });
+
+    it('completa "azureDevOps" con defaults ausentes dentro de una config parcial (mismo criterio .prefault que "jira")', async () => {
+      const partial = { azureDevOps: { organizationUrl: 'https://dev.azure.com/tuorg' } };
+      const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(partial));
+
+      const config = await loader.loadConfig('/proj/qa-config.json');
+
+      expect(config.azureDevOps).toEqual({
+        organizationUrl: 'https://dev.azure.com/tuorg',
+        project: null,
+      });
+    });
+
+    it('lanza ConfigValidationError, mencionando "azureDevOps.organizationUrl", cuando no es una URL válida', async () => {
+      const invalid = { azureDevOps: { organizationUrl: 'no-es-una-url' } };
+      const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(invalid));
+
+      await expect(loader.loadConfig('/proj/qa-config.json')).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(ConfigValidationError);
+        const configError = error as ConfigValidationError;
+        expect(configError.issues).toEqual([
+          expect.objectContaining({ path: 'azureDevOps.organizationUrl' }),
+        ]);
+        return true;
+      });
+    });
+
+    it('lanza ConfigValidationError, mencionando "azureDevOps.project", cuando es un string vacío', async () => {
+      const invalid = { azureDevOps: { project: '' } };
+      const loader = loaderWithFile('/proj/qa-config.json', JSON.stringify(invalid));
+
+      await expect(loader.loadConfig('/proj/qa-config.json')).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(ConfigValidationError);
+        const configError = error as ConfigValidationError;
+        expect(configError.issues).toEqual([
+          expect.objectContaining({ path: 'azureDevOps.project' }),
+        ]);
         return true;
       });
     });

@@ -47,6 +47,14 @@ export interface ServerContext {
    * verdad, no acá.
    */
   jiraApiToken: string | undefined;
+  /**
+   * Personal Access Token (PAT) de Azure DevOps, leído de la variable de
+   * entorno `AZURE_DEVOPS_PAT` — mismo criterio que `jiraApiToken`: NUNCA
+   * en `qa-config.json` (ver `AzureDevOpsConfigSchema`). `undefined` si la
+   * variable no está seteada; `AzureDevOpsClient` (`core/azureDevOps`)
+   * recién valida su ausencia cuando se intenta publicar de verdad.
+   */
+  azureDevOpsPat: string | undefined;
 }
 
 export interface BuildServerContextDeps {
@@ -90,5 +98,6 @@ export async function buildServerContext(
       ? resolve(projectRoot, config.branding.logoPath)
       : null,
     jiraApiToken: process.env.JIRA_API_TOKEN,
+    azureDevOpsPat: process.env.AZURE_DEVOPS_PAT,
   };
 }

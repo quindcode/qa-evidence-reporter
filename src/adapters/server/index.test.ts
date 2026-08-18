@@ -47,6 +47,7 @@ async function buildContext(projectRoot: string, port: number): Promise<ServerCo
     templateDir: DEFAULT_TEMPLATE_DIR,
     brandingLogoAbsolutePath: null,
     jiraApiToken: undefined,
+    azureDevOpsPat: undefined,
   };
 }
 

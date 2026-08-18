@@ -92,8 +92,10 @@ const BrandingConfigSchema = z.object({
 
 /**
  * Integración opcional con Jira Cloud (fase 1 de la integración con
- * gestores de proyecto — Azure DevOps queda para una fase futura, como
- * módulo hermano, no una abstracción compartida prematura).
+ * gestores de proyecto — Azure DevOps es la fase 2, ver `AzureDevOpsConfigSchema`
+ * más abajo: un módulo hermano independiente, `core/azureDevOps`, sin
+ * ninguna abstracción compartida con `core/jira` más allá de lo que ya era
+ * genérico de antes, como `RESULT_LABELS`).
  *
  * Deliberadamente NO tiene un campo `apiToken`: el token de API nunca vive
  * en `qa-config.json` (se versiona, es secreto) — sale de la variable de
@@ -108,6 +110,25 @@ const JiraConfigSchema = z.object({
   baseUrl: z.string().url().nullable().default(null),
   /** Email de la cuenta Jira Cloud usada para autenticar (Basic auth junto al token) — no es secreto. */
   email: z.string().email().nullable().default(null),
+});
+
+/**
+ * Integración opcional con Azure DevOps (fase 2, módulo hermano de
+ * `JiraConfigSchema` — ver su JSDoc). Mismo criterio de "sin campo
+ * `apiToken`": el Personal Access Token (PAT) nunca vive en
+ * `qa-config.json`, sale de la variable de entorno `AZURE_DEVOPS_PAT` (ver
+ * `adapters/server/context.ts`). A diferencia de Jira (que autentica con
+ * `email` + token), Azure DevOps autentica un PAT solo con Basic auth de
+ * usuario VACÍO (ver `core/azureDevOps/azureDevOpsClient.ts`) — por eso acá
+ * no hay ningún campo de identidad de cuenta, solo `organizationUrl`/
+ * `project`, que junto con el PAT alcanzan para armar cualquier URL de la
+ * API REST.
+ */
+const AzureDevOpsConfigSchema = z.object({
+  /** URL de la organización de Azure DevOps, p. ej. "https://dev.azure.com/tuorganizacion" (sin `/{project}/_apis/...`). `null` = integración desactivada. */
+  organizationUrl: z.string().url().nullable().default(null),
+  /** Nombre (o id) del proyecto de Azure DevOps donde viven los work items a los que se va a publicar. */
+  project: z.string().min(1).nullable().default(null),
 });
 
 /**
@@ -129,6 +150,7 @@ export const QaConfigSchema = z.object({
   logging: LoggingConfigSchema.prefault({}),
   branding: BrandingConfigSchema.prefault({}),
   jira: JiraConfigSchema.prefault({}),
+  azureDevOps: AzureDevOpsConfigSchema.prefault({}),
   /** Ruta a un `templateDir` custom, o `null` para usar el template embebido (`templates/default`) — ver `adapters/cli`. */
   reportTemplate: z.string().nullable().default(null),
 });

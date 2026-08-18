@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { ZipArchive, type ArchiverError } from 'archiver';
 import { Router } from 'express';
 
+import { buildQaSummaryCommentHtml } from '../../../core/azureDevOps/index.js';
 import { buildQaSummaryComment } from '../../../core/jira/index.js';
 import {
   createHandlebarsTemplateEngine,
@@ -24,7 +25,7 @@ import type { CoreServices } from '../services.js';
 
 /**
  * `POST /api/report/generate` + `GET /api/report/export-zip` +
- * `POST /api/report/publish-jira`.
+ * `POST /api/report/publish-jira` + `POST /api/report/publish-azure-devops`.
  *
  * Decisión de diseño (`reportUrl` relativo): la respuesta de `generate`
  * nunca devuelve una ruta absoluta del filesystem del server (irrelevante e
@@ -150,5 +151,55 @@ export function createReportRouter(context: ServerContext, services: CoreService
     }),
   );
 
+  router.post(
+    '/report/publish-azure-devops',
+    asyncHandler(async (req, res) => {
+      const workItemId = parseWorkItemId(req.body?.workItemId);
+      if (workItemId === null) {
+        throw new QaError(
+          'El campo "workItemId" es obligatorio y debe ser un número entero positivo.',
+          INVALID_REQUEST_BODY,
+        );
+      }
+
+      const indexPath = join(context.reportsDir, 'index.html');
+      if (!(await pathExists(indexPath))) {
+        throw new QaError(
+          'Todavía no se generó ningún reporte — llamá primero a "POST /api/report/generate".',
+          NO_REPORT_GENERATED,
+        );
+      }
+
+      const zipBuffer = await buildReportZipBuffer(context.reportsDir);
+      const { workItemUrl } = await services.azureDevOpsClient.attachReport(
+        workItemId,
+        zipBuffer,
+        'qa-report.zip',
+      );
+
+      // Mismo criterio que "publish-jira": sin sesión guardada, el adjunto
+      // ya subió, así que igual respondemos éxito, solo sin comentario. Si
+      // SÍ hay sesión pero `addComment` falla, el error se propaga y el
+      // request completo falla, igual que cualquier otro fallo de
+      // `attachReport`.
+      const session = await loadCurrentSessionOrNull(services.sessionEngine);
+      if (session) {
+        await services.azureDevOpsClient.addComment(
+          workItemId,
+          buildQaSummaryCommentHtml(session),
+        );
+      }
+
+      context.logger.info('Reporte adjuntado a Azure DevOps', { workItemId });
+      res.status(201).json({ workItemId, workItemUrl });
+    }),
+  );
+
   return router;
+}
+
+/** `null` si `value` no es un entero positivo válido (ni como `number` ni como `string` numérica) — nunca lanza. */
+function parseWorkItemId(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value.trim()) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
