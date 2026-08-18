@@ -12,6 +12,26 @@
      que cambiar el otro; no hay una única fuente de verdad compartida
      entre TS y CSS porque el CSS no puede importar un módulo TS.
      ============================================================ */
+
+  /*
+   * Fuente empaquetada (no del sistema): Baloo 2 (OFL), subseteada a
+   * latín/dígitos/puntuación y convertida a WOFF2 (~32KB, ver
+   * `templates/default/assets/Baloo2-subset.woff2`) — copiada al reporte
+   * igual que `echarts.custom.min.js` (ver `copyStaticAssets` en
+   * `reportGenerator.ts`), así que sigue abriendo con `file://` sin red.
+   * Es un font VARIABLE (un solo archivo cubre todo el eje de peso 1–1000),
+   * por eso un único `@font-face` sin varios bloques por peso alcanza.
+   * `{{basePath}}` (mismo mecanismo que usa `<script src>` de ECharts) para
+   * que la ruta resuelva tanto desde `index.html` (`''`) como desde
+   * `features/*.html` (`'../'`).
+   */
+  @font-face {
+    font-family: 'Baloo 2';
+    src: url('{{basePath}}assets/Baloo2-subset.woff2') format('woff2');
+    font-weight: 1 1000;
+    font-display: swap;
+  }
+
   :root {
     --qa-bg: #ffffff;
     --qa-bg-elevated: #f6f6f7;
@@ -22,13 +42,28 @@
 
     --qa-pass: #15803d;
     --qa-fail: #b91c1c;
-    --qa-skip: #57534e;
+    --qa-skip: #475569;
     --qa-pending: #b45309;
 
-    --qa-pass-bg: #ecfdf3;
-    --qa-fail-bg: #fef2f2;
-    --qa-skip-bg: #f4f4f5;
-    --qa-pending-bg: #fffbeb;
+    --qa-pass-bg: #e0fcea;
+    --qa-fail-bg: #fbd0cc;
+    --qa-skip-bg: #e0e6ed;
+    --qa-pending-bg: #fdf4e7;
+
+    /*
+     * Sombra ambiental de `.qa-card` EN REPOSO (ver DESIGN.md, "Elevation &
+     * Depth" — la Regla de lo Plano por Defecto se revisó para admitir
+     * esto): offset+blur real y muy sutil, "papel apenas levantado de la
+     * mesa", no la sombra marcada de `.qa-feature-row:hover` (ver la Regla
+     * de la Elevación en Hover, mucho más pronunciada porque confirma una
+     * interacción). Solo en claro — en oscuro, `--qa-bg-elevated` ya es
+     * visiblemente más claro que `--qa-bg` (looks "elevado" por contraste
+     * de tono), y una sombra NEGRA sobre un fondo que ya es casi negro no
+     * se leería como profundidad, se perdería. `--qa-bg` sería más oscuro
+     * que la tarjeta que "flota" sobre él — físicamente incoherente pedirle
+     * una sombra oscura a algo más claro que su fondo.
+     */
+    --qa-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 14px 32px -16px rgba(15, 23, 42, 0.16);
 
     /*
      * Variante "sobre tinte" de cada color de estado, para texto/bordes que
@@ -61,13 +96,15 @@
 
       --qa-pass-bg: #10281b;
       --qa-fail-bg: #2c1414;
-      --qa-skip-bg: #26262a;
+      --qa-skip-bg: #262b33;
       --qa-pending-bg: #2b2110;
 
       --qa-pass-on-tint: #4ade80;
       --qa-fail-on-tint: #f87171;
-      --qa-skip-on-tint: #a8a8a8;
+      --qa-skip-on-tint: #94a3b8;
       --qa-pending-on-tint: #fbbf24;
+
+      --qa-card-shadow: none;
     }
   }
 
@@ -80,14 +117,15 @@
     --qa-fg-muted: #5f5f5f;
     --qa-border: #dcdcdc;
     --qa-link: #1d4ed8;
-    --qa-pass-bg: #ecfdf3;
-    --qa-fail-bg: #fef2f2;
-    --qa-skip-bg: #f4f4f5;
-    --qa-pending-bg: #fffbeb;
+    --qa-pass-bg: #e0fcea;
+    --qa-fail-bg: #fbd0cc;
+    --qa-skip-bg: #e0e6ed;
+    --qa-pending-bg: #fdf4e7;
     --qa-pass-on-tint: var(--qa-pass);
     --qa-fail-on-tint: var(--qa-fail);
     --qa-skip-on-tint: var(--qa-skip);
     --qa-pending-on-tint: var(--qa-pending);
+    --qa-card-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 14px 32px -16px rgba(15, 23, 42, 0.16);
   }
 
   :root[data-theme='dark'] {
@@ -99,12 +137,13 @@
     --qa-link: #7aa6ff;
     --qa-pass-bg: #10281b;
     --qa-fail-bg: #2c1414;
-    --qa-skip-bg: #26262a;
+    --qa-skip-bg: #262b33;
     --qa-pending-bg: #2b2110;
     --qa-pass-on-tint: #4ade80;
     --qa-fail-on-tint: #f87171;
-    --qa-skip-on-tint: #a8a8a8;
+    --qa-skip-on-tint: #94a3b8;
     --qa-pending-on-tint: #fbbf24;
+    --qa-card-shadow: none;
   }
 
   * {
@@ -124,18 +163,21 @@
   }
 
   /*
-   * Dos familias, roles distintos (ver skill frontend-design): serif para
-   * cualquier NÚMERO que sea el protagonista de su bloque (el % del hero,
-   * el % de cada feature) — le da al reporte un aire de "documento/informe
-   * formal" en vez de "panel de admin"; sans para todo lo demás (texto,
-   * etiquetas, UI). Ambas son pilas de fuentes del sistema — CERO fuentes
-   * externas/embebidas, el reporte sigue abriendo offline sin depender de
-   * que la fuente exista en el archivo (ver ARCHITECTURE.md, "Reporte
-   * HTML").
+   * Una sola familia (Baloo 2, ver @font-face arriba) para todo el reporte,
+   * con el mismo rol que antes tenían dos pilas separadas: el peso 600 en
+   * `--qa-font-display` sigue reservado exclusivamente al NÚMERO
+   * protagonista de su bloque (el % del hero, el % de cada feature — ver
+   * `.qa-hero__number`/`.qa-feature-row__percent`), `--qa-font-body` para
+   * todo lo demás. La jerarquía ya no viene de "serif vs. sans" sino de
+   * peso/tamaño dentro de la misma familia redondeada — más cálida que la
+   * combinación anterior (serif de documento + sans neutro), a pedido
+   * explícito de feedback visual. Fallback a pilas del sistema por si el
+   * WOFF2 no carga (ver @font-face), no porque el reporte pueda abrir sin
+   * él: sigue siendo 100% offline, la fuente viaja empaquetada.
    */
   :root {
-    --qa-font-body: Arial, 'Liberation Sans', Helvetica, sans-serif;
-    --qa-font-display: Charter, 'Bitstream Charter', Georgia, 'Times New Roman', serif;
+    --qa-font-body: 'Baloo 2', Arial, 'Liberation Sans', Helvetica, sans-serif;
+    --qa-font-display: 'Baloo 2', Arial, 'Liberation Sans', Helvetica, sans-serif;
   }
 
   body {
@@ -177,7 +219,7 @@
     padding: 10px 16px;
     background: var(--qa-link);
     color: #ffffff;
-    border-radius: 8px;
+    border-radius: 10px;
     font-weight: 600;
     font-size: 0.9rem;
   }
@@ -244,7 +286,7 @@
     border: 1px solid var(--qa-border);
     background: var(--qa-bg-elevated);
     color: var(--qa-fg);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 8px 15px;
     cursor: pointer;
     font-size: 0.88rem;
@@ -339,9 +381,42 @@
   .qa-card {
     background: var(--qa-bg-elevated);
     border: 1px solid var(--qa-border);
-    border-radius: 14px;
+    border-radius: 20px;
     padding: 28px;
     margin-bottom: 32px;
+    box-shadow: var(--qa-card-shadow);
+  }
+
+  /*
+   * Único gradiente de toda la superficie (ver DESIGN.md, Elevation & Depth
+   * — "cero gradientes" se revisó para admitir este único caso): un glow
+   * radial muy sutil detrás del hero, en `--qa-link` (el acento neutro del
+   * documento, o el `accentColor` de marca si hay branding — ver
+   * partials/theme-toggle-script.hbs/header.hbs para el mismo patrón de
+   * "el acento de marca pisa al neutro"). Es SOLO el hero (`.qa-card--hero`,
+   * nunca todos los `.qa-card`) a propósito — la misma lógica de escasez de
+   * la Regla del Protagonista: si todas las tarjetas brillaran, ninguna se
+   * leería como la protagonista.
+   */
+  .qa-card--hero {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .qa-card--hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      480px circle at 10% -10%,
+      color-mix(in srgb, var(--qa-link) 16%, transparent),
+      transparent 70%
+    );
+    pointer-events: none;
+  }
+
+  .qa-card--hero > * {
+    position: relative;
   }
 
   .qa-section-heading {
@@ -370,8 +445,8 @@
 
   /*
    * El "hero": el % de aprobación es el protagonista de todo el reporte —
-   * lo primero que se lee, en la tipografía serif (ver `--qa-font-display`
-   * arriba). El donut queda como visual de acompañamiento — y, con datos
+   * lo primero que se lee, en el peso más marcado de Baloo 2 (ver
+   * `--qa-font-display` arriba). El donut queda como visual de acompañamiento — y, con datos
    * reales, ya no repite el mismo número en su centro (ver
    * `renderDonutChart(summary, { showCenterLabel: ... })` en
    * `reportGenerator.ts`): duplicar el % dos veces a centímetros de
@@ -392,7 +467,10 @@
     margin: 0;
     font-family: var(--qa-font-display);
     font-size: clamp(3.25rem, 2.4rem + 4.2vw, 5.5rem);
-    font-weight: 600;
+    /* 800, no 600: el número más protagonista de todo el reporte se
+       apoya en el extremo alto del eje de peso de Baloo 2 (ver DESIGN.md,
+       Regla del Protagonista) — a pedido explícito de "más impactante". */
+    font-weight: 800;
     line-height: 1;
     letter-spacing: -0.025em;
   }
@@ -484,14 +562,14 @@
     align-items: baseline;
     gap: 9px;
     padding: 10px 12px;
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid transparent;
   }
 
   .qa-stat__count {
     font-family: var(--qa-font-display);
     font-size: 1.3rem;
-    font-weight: 600;
+    font-weight: 800;
     line-height: 1;
   }
 
@@ -542,6 +620,7 @@
     color: var(--qa-fg);
     font-family: var(--qa-font-display);
     font-size: 1.05rem;
+    font-weight: 800;
   }
 
   /* Reemplaza el SVG generado server-side que tenía esta barra antes de
@@ -604,12 +683,23 @@
     margin: 0 -18px;
     text-decoration: none;
     color: inherit;
-    border-radius: 8px;
-    transition: background-color 0.12s ease;
+    border-radius: 10px;
+    transition:
+      background-color 0.18s ease,
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* Excepción puntual a "La Regla de lo Plano por Defecto" (ver DESIGN.md,
+     Elevation & Depth): en reposo sigue sin sombra — la elevación acá es
+     una señal de afordancia (esta fila navega al detalle de la feature),
+     nunca decoración, y desaparece por completo con `prefers-reduced-motion`
+     más abajo. El `box-shadow` real (con offset+blur, no un halo plano) lo
+     define cada variante `.qa-rail--{result}` de abajo, tomando el color de
+     esa fila — la fila "se levanta" en su propio color de estado. */
   .qa-feature-row:hover {
     background: var(--qa-bg);
+    transform: translateY(-2px);
   }
 
   .qa-feature-row__main {
@@ -672,6 +762,15 @@
 
   .qa-feature-row__meta .qa-icon {
     color: var(--qa-fg-muted);
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* El chevron final de `.qa-feature-row__meta` (ver index.hbs) se desliza
+     hacia la fila que sigue en el hover — refuerza "esto navega hacia
+     adelante" sin agregar una flecha nueva. `prefers-reduced-motion` lo
+     desactiva más abajo. */
+  .qa-feature-row:hover .qa-feature-row__meta .qa-icon {
+    transform: translateX(3px);
   }
 
   .qa-feature-row__count {
@@ -683,7 +782,7 @@
   .qa-feature-row__percent {
     font-family: var(--qa-font-display);
     font-size: 1.55rem;
-    font-weight: 600;
+    font-weight: 800;
     min-width: 3.4ch;
     text-align: right;
   }
@@ -732,7 +831,7 @@
 
   .qa-scenario {
     border: 1px solid var(--qa-border);
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 22px 24px;
     margin-bottom: 20px;
     /* Espacio de respiro al llegar por el link "Ver primer fallo"
@@ -759,7 +858,7 @@
     color: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 8px;
+    border-radius: 10px;
   }
 
   /* `--qa-bg-elevated`, no `--qa-bg`: a diferencia de `.qa-feature-row`
@@ -902,7 +1001,7 @@
     padding: 14px 16px;
     border: 1px solid var(--qa-fail-on-tint);
     background: var(--qa-fail-bg);
-    border-radius: 8px;
+    border-radius: 10px;
     color: var(--qa-fg);
   }
 
@@ -926,7 +1025,7 @@
 
   .qa-evidence-item {
     border: 1px solid var(--qa-border);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 8px;
     background: var(--qa-bg-elevated);
     width: 160px;
@@ -938,7 +1037,7 @@
     width: 100%;
     aspect-ratio: 4 / 3;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: 6px;
     background: #000;
   }
 
@@ -1004,6 +1103,42 @@
   }
   .qa-rail--pending {
     border-left-color: var(--qa-pending-on-tint);
+  }
+
+  /* Sombra de hover de `.qa-feature-row` (ver la regla base más arriba),
+     una por variante de resultado — offset+blur real (nunca un halo plano
+     a offset 0, ver DESIGN.md "Depth"), en el propio color on-tint de la
+     fila: la elevación queda "teñida" del mismo semáforo que ya lee el
+     riel, en vez de una sombra gris genérica igual para las 4. */
+  .qa-feature-row.qa-rail--pass:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-pass-on-tint) 35%, transparent);
+  }
+  .qa-feature-row.qa-rail--fail:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-fail-on-tint) 35%, transparent);
+  }
+  .qa-feature-row.qa-rail--skip:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-skip-on-tint) 35%, transparent);
+  }
+  .qa-feature-row.qa-rail--pending:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-pending-on-tint) 35%, transparent);
+  }
+
+  /* `prefers-reduced-motion`: apaga el desplazamiento espacial (translateY/
+     translateX) de los hovers de arriba — la retroalimentación de que algo
+     es interactivo se mantiene vía `background`/`box-shadow`/color, que no
+     se desactivan (ver reference/animate.md del skill de diseño: "reduced
+     motion means fewer and gentler animations, not disabling all motion"). */
+  @media (prefers-reduced-motion: reduce) {
+    .qa-feature-row,
+    .qa-feature-row__meta .qa-icon {
+      transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    .qa-feature-row:hover {
+      transform: none;
+    }
+    .qa-feature-row:hover .qa-feature-row__meta .qa-icon {
+      transform: none;
+    }
   }
 
   /* En viewports angostos, `.qa-feature-row` recibía todos sus hijos como

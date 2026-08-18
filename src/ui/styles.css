@@ -13,6 +13,20 @@
  * CSS, así que no hace falta repetirlos aquí también.
  */
 
+/* Baloo 2 (OFL), subseteada a latín/dígitos/puntuación (~32KB WOFF2, ver
+   `assets/Baloo2-subset.woff2`) — Vite la resuelve por `url()` y la copia
+   con hash a `dist/ui/assets/` como cualquier otro asset referenciado desde
+   CSS, sin necesidad de tocar `vite.config.ts`. Misma fuente que el reporte
+   (ver `templates/default/partials/styles.hbs`), a pedido explícito de
+   feedback visual — el runner deja de ser la única superficie sin acento
+   redondeado. */
+@font-face {
+  font-family: 'Baloo 2';
+  src: url('./assets/Baloo2-subset.woff2') format('woff2');
+  font-weight: 1 1000;
+  font-display: swap;
+}
+
 :root {
   --bg: #f8fafc;
   --bg-elevated: #ffffff;
@@ -93,6 +107,7 @@ body,
 body {
   margin: 0;
   font-family:
+    'Baloo 2',
     Arial,
     'Liberation Sans',
     Helvetica,

@@ -33,6 +33,16 @@
     var resultLabels = JSON.parse(labelsEl.textContent);
     var RESULT_ORDER = ['pass', 'fail', 'skip', 'pending'];
 
+    // ECharts no respeta `prefers-reduced-motion` por su cuenta (es CSS, no
+    // algo que el canvas lea) — acá se apaga la animación de ENTRADA (el
+    // arco del gauge "dibujándose", la cascada de las barras) para quien la
+    // pidió apagada, pero el feedback de hover (emphasis: crecer/sombra)
+    // sigue intacto, porque confirma una interacción, no es decoración (ver
+    // reference/animate.md del skill de diseño).
+    var reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     function themeColors() {
       var style = getComputedStyle(document.documentElement);
       function read(name) {
@@ -66,11 +76,23 @@
 
     var registered = [];
 
+    // Apaga duración/delay de entrada in-place sobre el `option` ya armado
+    // por cada `build*Option` — así ninguno de los 4 necesita su propia
+    // rama "si reducedMotion..."; el corte queda en un solo lugar.
+    function applyReducedMotion(option) {
+      if (!reducedMotion) return option;
+      option.animation = false;
+      (option.series || []).forEach(function (series) {
+        series.animationDelay = 0;
+      });
+      return option;
+    }
+
     function registerChart(elementId, buildOption) {
       var el = document.getElementById(elementId);
       if (!el) return null;
       var chart = window.echarts.init(el);
-      chart.setOption(buildOption(themeColors()));
+      chart.setOption(applyReducedMotion(buildOption(themeColors())));
       registered.push({ chart: chart, buildOption: buildOption });
       return chart;
     }
@@ -80,7 +102,12 @@
       var bigSize = heroNumberFontSizePx();
       var pctSize = heroPercentFontSizePx();
       return {
-        animationDuration: 1000,
+        // El gauge es el "momento autoral" del dashboard (ver
+        // reference/animate.md del skill de diseño: un foco elegido, no un
+        // fade-and-rise genérico repetido en todos lados) — 1.4s en vez de
+        // 1s le da al arco tiempo de leerse "dibujándose" en vez de solo
+        // aparecer; `cubicOut` desacelera con naturalidad hacia el final.
+        animationDuration: 1400,
         animationEasing: 'cubicOut',
         series: [
           {
@@ -113,6 +140,13 @@
                     { offset: 1, color: resultColors.pass },
                   ],
                 },
+                // Sombra real (offset+blur) sobre el propio arco de
+                // progreso, no un halo plano — le da al protagonista del
+                // reporte un poco de peso/relieve sin romper "lo plano por
+                // defecto" del resto del sistema (ver DESIGN.md, Motion).
+                shadowBlur: 14,
+                shadowOffsetY: 3,
+                shadowColor: 'rgba(0, 0, 0, 0.35)',
               },
             },
             axisLine: { lineStyle: { width: 20, color: [[1, colors.border + '40']] } },
@@ -125,7 +159,10 @@
               valueAnimation: true,
               formatter: '{num|{value}}{pct|%}',
               rich: {
-                num: { fontFamily: colors.fontDisplay, fontWeight: 600, fontSize: bigSize, color: colors.fg },
+                // 800, no 600: calza con `.qa-hero__number` (ver
+                // partials/styles.hbs) — el mismo número protagonista, ahora
+                // también en el gauge, en el mismo peso extremo de Baloo 2.
+                num: { fontFamily: colors.fontDisplay, fontWeight: 800, fontSize: bigSize, color: colors.fg },
                 pct: { fontFamily: colors.fontDisplay, fontWeight: 500, fontSize: pctSize, color: colors.fg + 'b3' },
               },
               offsetCenter: [0, '5%'],
@@ -188,7 +225,14 @@
             label: { show: false },
             labelLine: { show: false },
             itemStyle: { borderRadius: 6, borderColor: colors.bgElevated, borderWidth: 2 },
-            emphasis: { scaleSize: 6 },
+            // `scaleSize` ya crecía el segmento al pasar el mouse; se le
+            // suma una sombra real (offset+blur, ver nota del gauge más
+            // arriba) para que el "crecimiento" se lea como que el
+            // segmento se levanta, no solo que se agranda.
+            emphasis: {
+              scaleSize: 6,
+              itemStyle: { shadowBlur: 12, shadowOffsetY: 4, shadowColor: 'rgba(0, 0, 0, 0.35)' },
+            },
             data: seriesData,
           },
         ],
@@ -208,8 +252,23 @@
           type: 'bar',
           stack: 'total',
           barMaxWidth: 22,
+          // Clickear un segmento navega al detalle de esa feature (ver
+          // `barsChart.on('click', ...)` más abajo) — el puntero deja esa
+          // afordancia explícita en vez de depender del cursor default de
+          // ECharts.
+          cursor: 'pointer',
           itemStyle: { color: resultColors[key] },
-          emphasis: { focus: 'series' },
+          emphasis: {
+            focus: 'series',
+            itemStyle: { shadowBlur: 10, shadowOffsetY: 3, shadowColor: 'rgba(0, 0, 0, 0.35)' },
+          },
+          // Cascada por fila (no por segmento: todas las series comparten
+          // el mismo índice de categoría) — cada fila de feature aparece
+          // ~90ms después de la anterior en vez de todas a la vez, un
+          // segundo momento autoral más discreto que el del gauge.
+          animationDelay: function (dataIndex) {
+            return dataIndex * 90;
+          },
           data: bars.map(function (bar) {
             return bar[key];
           }),
@@ -306,7 +365,12 @@
             radius: [0, '90%'],
             nodeClick: 'zoomToNode',
             sort: null,
-            emphasis: { focus: 'ancestor' },
+            animationDuration: 800,
+            animationEasing: 'cubicOut',
+            emphasis: {
+              focus: 'ancestor',
+              itemStyle: { shadowBlur: 10, shadowOffsetY: 3, shadowColor: 'rgba(0, 0, 0, 0.35)' },
+            },
             itemStyle: { borderColor: colors.bgElevated, borderWidth: 1 },
             label: { show: false },
             levels: [
@@ -343,7 +407,7 @@
     function rerenderAll() {
       var colors = themeColors();
       registered.forEach(function (entry) {
-        entry.chart.setOption(entry.buildOption(colors), true);
+        entry.chart.setOption(applyReducedMotion(entry.buildOption(colors)), true);
       });
     }
 
