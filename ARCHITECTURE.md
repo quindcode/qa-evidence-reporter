@@ -137,7 +137,7 @@ Thumbnails junto al archivo original: mismo nombre + `.thumb.png` (jimp) o
 - `POST /api/session/select` — elegir qué features correr, inicia ejecución
 - `GET /api/session` — estado completo de la sesión actual
 - `POST /api/session/step/:stepId/evidence` — subir archivo(s) (multipart, usar `multer`)
-- `POST /api/session/step/:stepId/result` — marcar pass/fail/skip (+ notas / defecto)
+- `POST /api/session/step/:stepId/result` — marcar pass/fail/skip (+ notas / defecto). Marcar un step como `skip` cascada a TODOS los steps del mismo scenario (pisando cualquier resultado previo): omitir es una decisión sobre el caso de prueba completo, no sobre un step aislado — un scenario "parcialmente omitido" no es un estado válido (ver `setStepResult`/`findScenarioContainingStep` en `sessionEngine.ts`).
 - `POST /api/session/navigate` — moverse a step anterior/siguiente/arbitrario
 - `POST /api/report/generate` — genera el reporte HTML en `reports/`
 - `GET /api/report/export-zip` — devuelve el .zip del último reporte generado

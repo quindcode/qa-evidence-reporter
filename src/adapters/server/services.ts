@@ -1,25 +1,31 @@
-import type { AzureDevOpsClient } from '../../core/azureDevOps/index.js';
-import type { JiraClient } from '../../core/jira/index.js';
 import type { EvidenceStore } from '../../core/types/evidence.js';
 import type { GherkinParser } from '../../core/types/parser.js';
 import type { SessionEngine } from '../../core/types/session.js';
+import type { SettingsService } from './settingsService.js';
 
 /**
- * Instancias de `core/**` que `createApp` construye UNA vez (no por
- * request) a partir de `ServerContext` y comparte entre todas las rutas —
- * ver `app.ts`. `SessionEngine` en particular NECESITA ser una única
- * instancia compartida: guarda su estado en una closure interna (ver
- * `core/session/sessionEngine.ts`), así que una instancia nueva por request
- * "olvidaría" cualquier sesión cargada/creada por un request anterior en
- * este mismo proceso. `JiraClient`/`AzureDevOpsClient`, en cambio, no
- * tienen estado propio — comparten la instancia por el mismo motivo
- * práctico que las demás (un solo lugar donde se construyen a partir de
- * `context`), no porque lo necesiten.
+ * Instancias de `core/**` (+ `SettingsService`, ver su JSDoc) que
+ * `createApp` construye UNA vez (no por request) a partir de
+ * `ServerContext` y comparte entre todas las rutas — ver `app.ts`.
+ * `SessionEngine`/`SettingsService` en particular NECESITAN ser una única
+ * instancia compartida: ambos guardan estado mutable en una closure interna
+ * (ver `core/session/sessionEngine.ts` y `settingsService.ts`), así que una
+ * instancia nueva por request "olvidaría" cualquier cambio de un request
+ * anterior en este mismo proceso.
+ *
+ * `JiraClient`/`AzureDevOpsClient` YA NO viven acá (a diferencia de antes
+ * de la integración de "settings desde el UI"): son objetos sin estado
+ * propio, construidos a partir de credenciales que ahora pueden cambiar en
+ * caliente (`SettingsService.setJiraToken`/`setAzureToken`, o
+ * `updateSettings`) — guardar una instancia ya armada en `CoreServices`
+ * "congelaría" las credenciales del momento del boot, exactamente lo que
+ * esta feature necesita dejar de hacer. Las rutas que los necesitan los
+ * construyen al vuelo con `createJiraClient(services.settingsService.getJiraCredentials())`
+ * (ver `routes/report.ts`) — construirlos es barato (ningún I/O propio).
  */
 export interface CoreServices {
   gherkinParser: GherkinParser;
   sessionEngine: SessionEngine;
   evidenceStore: EvidenceStore;
-  jiraClient: JiraClient;
-  azureDevOpsClient: AzureDevOpsClient;
+  settingsService: SettingsService;
 }

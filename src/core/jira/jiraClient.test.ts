@@ -6,6 +6,7 @@ import {
   JiraNotConfiguredError,
   JiraRequestError,
 } from '../types/errors.js';
+import { QA_SUMMARY_COMMENT_MARKER } from './commentBuilder.js';
 import { createJiraClient } from './jiraClient.js';
 
 const VALID_CONFIG = {
@@ -34,6 +35,9 @@ const NO_EXISTING_ATTACHMENTS = fakeResponse({
   status: 200,
   json: { fields: { attachment: [] } },
 });
+
+/** Sin comentarios previos: el `GET` de chequeo de duplicados (`addComment`) no encuentra nada que borrar. */
+const NO_EXISTING_COMMENTS = fakeResponse({ ok: true, status: 200, json: { comments: [] } });
 
 describe('createJiraClient', () => {
   describe('attachReport', () => {
@@ -239,13 +243,16 @@ describe('createJiraClient', () => {
     const COMMENT_BODY = { type: 'doc', version: 1, content: [] } as const;
 
     it('postea el comentario a la URL/headers/body correctos de la API v3 de comentarios', async () => {
-      const fetchImpl = vi.fn().mockResolvedValue(fakeResponse({ ok: true, status: 201 }));
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(NO_EXISTING_COMMENTS)
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 201 }));
       const client = createJiraClient(VALID_CONFIG, { fetchImpl });
 
       await client.addComment('QA-123', COMMENT_BODY);
 
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchImpl.mock.calls[1] as [string, RequestInit];
       expect(url).toBe('https://tuempresa.atlassian.net/rest/api/3/issue/QA-123/comment');
       expect(init.method).toBe('POST');
 
@@ -255,6 +262,41 @@ describe('createJiraClient', () => {
       );
       expect(headers['Content-Type']).toBe('application/json');
       expect(JSON.parse(init.body as string)).toEqual({ body: COMMENT_BODY });
+    });
+
+    it('antes de postear, borra los comentarios previos que llevan el marcador de la herramienta', async () => {
+      const markedComment = { id: 'c-1', body: { type: 'doc', content: [{ text: QA_SUMMARY_COMMENT_MARKER }] } };
+      const humanComment = { id: 'c-2', body: { type: 'doc', content: [{ text: 'Buen trabajo!' }] } };
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(
+          fakeResponse({ ok: true, status: 200, json: { comments: [markedComment, humanComment] } }),
+        )
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200 })) // DELETE del comentario marcado
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 201 })); // POST del comentario nuevo
+      const client = createJiraClient(VALID_CONFIG, { fetchImpl });
+
+      await client.addComment('QA-123', COMMENT_BODY);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      const [deleteUrl, deleteInit] = fetchImpl.mock.calls[1] as [string, RequestInit];
+      expect(deleteUrl).toBe('https://tuempresa.atlassian.net/rest/api/3/issue/QA-123/comment/c-1');
+      expect(deleteInit.method).toBe('DELETE');
+      // El comentario humano (sin el marcador) nunca se toca — solo 1 DELETE, no 2.
+      expect(fetchImpl.mock.calls[2][1]).toMatchObject({ method: 'POST' });
+    });
+
+    it('un fallo al borrar un comentario marcado no bloquea la publicación del nuevo (best-effort)', async () => {
+      const markedComment = { id: 'c-1', body: { type: 'doc', content: [{ text: QA_SUMMARY_COMMENT_MARKER }] } };
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, json: { comments: [markedComment] } }))
+        .mockRejectedValueOnce(new Error('permisos insuficientes')) // DELETE falla
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 201 })); // POST igual se intenta
+      const client = createJiraClient(VALID_CONFIG, { fetchImpl });
+
+      await expect(client.addComment('QA-123', COMMENT_BODY)).resolves.toBeUndefined();
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
     });
 
     it('lanza JiraAuthenticationError en 401', async () => {

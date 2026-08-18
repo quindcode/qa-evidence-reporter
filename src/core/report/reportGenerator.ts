@@ -8,6 +8,7 @@ import type {
   BrandingInput,
   BrandingMeta,
   EvidenceReportView,
+  FailedScenarioLink,
   FeatureDetailPageData,
   FeatureReportView,
   IndexPageData,
@@ -444,19 +445,21 @@ async function buildReportData(
     resultColors: RESULT_COLORS,
     resultLabels: RESULT_LABELS,
     features,
-    firstFailureHref: buildFirstFailureHref(features),
+    failedScenarios: buildFailedScenarios(features),
   };
 }
 
-/**
- * `detailPath` del primer feature fallido + ancla a su primer scenario
- * fallido (ver `FeatureReportView.firstFailedScenarioId`), o `undefined` si
- * nada falló en toda la sesión. Ver `ReportData.firstFailureHref`.
- */
-function buildFirstFailureHref(features: FeatureReportView[]): string | undefined {
-  const feature = features.find((candidate) => candidate.firstFailedScenarioId);
-  if (!feature?.firstFailedScenarioId) return undefined;
-  return `${feature.detailPath}#scenario-${feature.firstFailedScenarioId}`;
+/** Un `FailedScenarioLink` por cada scenario con `result === 'fail'`, en TODAS las features — ver `ReportData.failedScenarios`. */
+function buildFailedScenarios(features: FeatureReportView[]): FailedScenarioLink[] {
+  return features.flatMap((feature) =>
+    feature.scenarios
+      .filter((scenario) => scenario.result === 'fail')
+      .map((scenario) => ({
+        featureName: feature.name,
+        scenarioName: scenario.name,
+        href: `${feature.detailPath}#scenario-${scenario.id}`,
+      })),
+  );
 }
 
 /** Carpeta (relativa a `outputDir`) donde queda copiado el logo de marca, si hay uno configurado. */

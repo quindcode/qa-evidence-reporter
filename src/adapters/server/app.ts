@@ -3,9 +3,7 @@ import { join } from 'node:path';
 
 import express, { type Express, type Response } from 'express';
 
-import { createAzureDevOpsClient } from '../../core/azureDevOps/index.js';
 import { createEvidenceStore } from '../../core/evidence/index.js';
-import { createJiraClient } from '../../core/jira/index.js';
 import { createGherkinParser } from '../../core/parser/index.js';
 import { createSessionEngine } from '../../core/session/index.js';
 import type { ServerContext } from './context.js';
@@ -14,7 +12,9 @@ import { createBrandingRouter } from './routes/branding.js';
 import { createFeaturesRouter } from './routes/features.js';
 import { createReportRouter } from './routes/report.js';
 import { createSessionRouter } from './routes/session.js';
+import { createSettingsRouter } from './routes/settings.js';
 import type { CoreServices } from './services.js';
+import { createSettingsService } from './settingsService.js';
 import { EVIDENCE_STATIC_PREFIX, REPORTS_STATIC_PREFIX } from './staticPrefixes.js';
 import { UI_DIST_DIR, UI_NOT_BUILT_PLACEHOLDER_HTML } from './uiPaths.js';
 
@@ -40,16 +40,12 @@ export function createApp(context: ServerContext): Express {
     gherkinParser: createGherkinParser({ logger: context.logger }),
     sessionEngine: createSessionEngine(context.sessionFilePath),
     evidenceStore: createEvidenceStore(context.evidenceBaseDir),
-    jiraClient: createJiraClient({
-      baseUrl: context.config.jira.baseUrl,
-      email: context.config.jira.email,
-      apiToken: context.jiraApiToken,
-    }),
-    azureDevOpsClient: createAzureDevOpsClient({
-      organizationUrl: context.config.azureDevOps.organizationUrl,
-      project: context.config.azureDevOps.project,
-      personalAccessToken: context.azureDevOpsPat,
-    }),
+    settingsService: createSettingsService(
+      context.configFilePath,
+      context.config,
+      context.jiraApiToken,
+      context.azureDevOpsPat,
+    ),
   };
 
   const app = express();
@@ -58,6 +54,7 @@ export function createApp(context: ServerContext): Express {
   app.use('/api', createFeaturesRouter(context, services));
   app.use('/api', createSessionRouter(context, services));
   app.use('/api', createReportRouter(context, services));
+  app.use('/api', createSettingsRouter(services));
   app.use(createBrandingRouter(context));
 
   // Estáticos: evidencia ya adjuntada (previews sin base64) y el último

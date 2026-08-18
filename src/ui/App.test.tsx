@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
@@ -20,6 +20,36 @@ function mockFeaturesResponse(body: unknown): void {
       ok: true,
       headers: { get: () => 'application/json' },
       json: async () => body,
+    }),
+  );
+}
+
+const FEATURES_RESPONSE = {
+  features: [],
+  session: { exists: false },
+  projectName: 'Proyecto Demo',
+  branding: { logoUrl: null, primaryColor: null, accentColor: null, highlightColor: null, ctaColor: null },
+  jira: { enabled: false },
+  azureDevOps: { enabled: false },
+};
+
+const SETTINGS_RESPONSE = {
+  projectName: 'Proyecto Demo',
+  jira: { baseUrl: null, email: null, tokenConfigured: false },
+  azureDevOps: { organizationUrl: null, project: null, tokenConfigured: false },
+};
+
+/** Rutea por URL — `GET /api/features` y `GET /api/settings` responden distinto. */
+function mockFeaturesAndSettings(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation((url: string) => {
+      const body = url === '/api/settings' ? SETTINGS_RESPONSE : FEATURES_RESPONSE;
+      return Promise.resolve({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => body,
+      });
     }),
   );
 }
@@ -109,5 +139,30 @@ describe('App — branding', () => {
 
     await waitFor(() => expect(screen.getByText('Proyecto X')).toBeInTheDocument());
     expect(document.querySelector('.app-header--branded')).not.toBeNull();
+  });
+});
+
+describe('App — Configuración', () => {
+  it('el botón del header carga GET /api/settings y muestra el panel; "Volver" regresa a la pantalla anterior', async () => {
+    mockFeaturesAndSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Proyecto Demo')).toBeInTheDocument());
+    // Todavía en la pantalla de selección (sin sesión existente).
+    expect(screen.getByText(/seleccioná las features a ejecutar/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /configuración/i }));
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Configuración' })).toBeInTheDocument());
+    expect(screen.getByLabelText(/nombre del proyecto/i)).toHaveValue('Proyecto Demo');
+    // La pantalla de selección queda oculta mientras se ve Configuración.
+    expect(screen.queryByText(/seleccioná las features a ejecutar/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /volver/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/seleccioná las features a ejecutar/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('heading', { name: 'Configuración' })).not.toBeInTheDocument();
   });
 });

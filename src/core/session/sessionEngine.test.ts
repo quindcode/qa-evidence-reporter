@@ -329,6 +329,36 @@ describe('createSessionEngine', () => {
         InvalidStepTransitionError,
       );
     });
+
+    it('marcar un step como skip cascada a TODOS los steps del scenario, pisando resultados previos (pass/fail)', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      const [firstStepId, secondStepId, thirdStepId] =
+        engine.getState().selectedFeatures[0].scenarios[0].steps.map((step) => step.id);
+
+      await engine.setStepResult(firstStepId, 'pass');
+      await engine.setStepResult(secondStepId, 'fail', { defectDescription: 'Botón roto' });
+
+      const state = await engine.setStepResult(thirdStepId, 'skip');
+      const steps = state.selectedFeatures[0].scenarios[0].steps;
+
+      expect(steps.map((step) => step.result)).toEqual(['skip', 'skip', 'skip']);
+      // El defecto del step que estaba en "fail" se limpia junto con el resto —
+      // un scenario omitido no puede seguir cargando un defecto pendiente.
+      expect(steps[1].defectDescription).toBeUndefined();
+      expect(steps.every((step) => step.timestamps.completedAt)).toBe(true);
+    });
+
+    it('la cascada de skip no se filtra a otros scenarios/features', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      const firstScenarioStepId = engine.getState().selectedFeatures[0].scenarios[0].steps[0].id;
+
+      const state = await engine.setStepResult(firstScenarioStepId, 'skip');
+      const otherScenarioSteps = state.selectedFeatures[0].scenarios[1].steps;
+
+      expect(otherScenarioSteps.every((step) => step.result === 'pending')).toBe(true);
+    });
   });
 
   describe('evidencia y notas', () => {

@@ -1,0 +1,39 @@
+{{!--
+  Lista TODOS los scenarios fallidos de la sesión (cualquier feature), no
+  solo "el primero" — a pedido explícito de feedback: un link que solo
+  menciona el primer fallo pierde sentido en cuanto falla más de uno. Cada
+  ítem cita feature + scenario para que quede claro cuál es cuál sin tener
+  que adivinar ni entrar a cada feature a buscarlo.
+
+  Recibe `failedScenarios` (ver `ReportData.failedScenarios`,
+  `core/types/report.ts`) y `basePath` como hash params (ver `index.hbs`) —
+  ambos se pasan explícitos en vez de asumir el contexto raíz porque este
+  partial vive dentro de un `{{#each}}` en el nivel de arriba (`basePath` no
+  cambia con `#each`, pero adentro del `{{#each failedScenarios}}` de ESTE
+  archivo sí hace falta `../` para volver a alcanzarlo).
+
+  `.qa-failed-list` tiene `max-height` + `overflow-y: auto` siempre (no solo
+  con muchos ítems): con pocos no se nota, con varios evita que esta card
+  crezca sin límite y desacomode el resto del dashboard — se ve TODO,
+  scrolleando adentro de una altura fija, nunca truncado/escondido.
+--}}
+<section class="qa-card qa-card--failed-scenarios" aria-labelledby="qa-failed-scenarios-heading">
+  <h2 id="qa-failed-scenarios-heading" class="qa-section-heading qa-section-heading--fail">
+    {{> icon-alert}} {{failedScenarios.length}} scenario{{pluralize failedScenarios.length}} fallido{{pluralize
+      failedScenarios.length
+    }}
+  </h2>
+  <ul class="qa-failed-list">
+    {{#each failedScenarios}}
+      <li class="qa-failed-list__item qa-rail qa-rail--fail">
+        <a class="qa-failed-list__link" href="{{../basePath}}{{href}}">
+          <span class="qa-failed-list__names">
+            <span class="qa-failed-list__feature">{{featureName}}</span>
+            <span class="qa-failed-list__scenario">{{scenarioName}}</span>
+          </span>
+          {{> chevron-right}}
+        </a>
+      </li>
+    {{/each}}
+  </ul>
+</section>

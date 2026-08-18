@@ -33,6 +33,10 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
     asyncHandler(async (_req, res) => {
       const features = await services.gherkinParser.parseDirectory(context.featuresDir);
       const session = await loadCurrentSessionOrNull(services.sessionEngine);
+      // `settingsService`, no `context.config`: estos 3 campos pueden haber
+      // cambiado en caliente desde que arrancó el server (ver
+      // `PATCH /api/settings`) — ver JSDoc de `ServerContext.config`.
+      const settings = services.settingsService.getPublicSettings();
 
       res.json({
         features: features.map((feature) => ({
@@ -45,7 +49,7 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
         session: session
           ? { exists: true, status: session.status, projectName: session.projectName }
           : { exists: false },
-        projectName: context.config.projectName,
+        projectName: settings.projectName,
         branding: {
           // `logoUrl` es la ruta servida por `createBrandingRouter`
           // (`/branding/logo`, ver `routes/branding.ts`), NUNCA una ruta de
@@ -58,19 +62,16 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
           highlightColor: context.config.branding.highlightColor,
           ctaColor: context.config.branding.ctaColor,
         },
-        // Solo el booleano derivado: `baseUrl`/`email` (ni el token, que
-        // nunca está en `config` — ver `JiraConfigSchema`) se exponen a la
-        // UI, no hacen falta para decidir si mostrar el botón "Adjuntar a
-        // Jira" (ver `Runner.tsx`).
+        // Solo el booleano derivado: `baseUrl`/`email` (ni el token) se
+        // exponen acá, no hacen falta para decidir si mostrar el botón
+        // "Adjuntar a Jira" (ver `Runner.tsx`) — el detalle completo (para
+        // la pantalla de Configuración) vive en `GET /api/settings`.
         jira: {
-          enabled: Boolean(context.config.jira.baseUrl && context.config.jira.email),
+          enabled: Boolean(settings.jira.baseUrl && settings.jira.email),
         },
-        // Mismo criterio que `jira` de arriba: solo el booleano derivado
-        // (ni `organizationUrl`/`project` ni el PAT) se expone a la UI.
+        // Mismo criterio que `jira` de arriba.
         azureDevOps: {
-          enabled: Boolean(
-            context.config.azureDevOps.organizationUrl && context.config.azureDevOps.project,
-          ),
+          enabled: Boolean(settings.azureDevOps.organizationUrl && settings.azureDevOps.project),
         },
       });
     }),

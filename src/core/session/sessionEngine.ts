@@ -181,6 +181,28 @@ export function createSessionEngine(
       };
     }
 
+    // "Skip" es una decisión sobre el SCENARIO completo ("se decidió no
+    // ejecutar este caso de prueba"), no sobre un step aislado — omitir
+    // el primer step y dejar a los demás en pass/pending sería un estado
+    // incoherente (un caso "parcialmente omitido" no existe en QA manual).
+    // Por eso, marcar cualquier step como skip cascada al resto de los
+    // steps del mismo scenario, pisando cualquier resultado previo que
+    // tuvieran — igual que arriba, sin `defectDescription` y con
+    // timestamps consistentes.
+    if (result === 'skip') {
+      const scenario = findScenarioContainingStep(current, stepId);
+      const skippedAt = clock();
+      for (const sibling of scenario.steps) {
+        if (sibling.id === stepId) continue;
+        sibling.result = 'skip';
+        sibling.defectDescription = undefined;
+        sibling.timestamps = {
+          startedAt: sibling.timestamps.startedAt ?? skippedAt,
+          completedAt: skippedAt,
+        };
+      }
+    }
+
     current.updatedAt = clock();
     await persist();
     return current;
@@ -346,6 +368,17 @@ function findStep(state: SessionState, stepId: string): StepExecution {
     for (const scenario of feature.scenarios) {
       const step = scenario.steps.find((candidate) => candidate.id === stepId);
       if (step) return step;
+    }
+  }
+
+  throw new InvalidStepTransitionError(`no existe un step con id "${stepId}" en la sesión actual.`);
+}
+
+/** Mismo recorrido que `findStep`, pero devuelve el `ScenarioExecution` contenedor — lo usa la cascada de skip de `setStepResult` para llegar a los steps hermanos. */
+function findScenarioContainingStep(state: SessionState, stepId: string): ScenarioExecution {
+  for (const feature of state.selectedFeatures) {
+    for (const scenario of feature.scenarios) {
+      if (scenario.steps.some((candidate) => candidate.id === stepId)) return scenario;
     }
   }
 

@@ -22,7 +22,7 @@
             {{> badge feature}}
             <p class="qa-hero__number">{{feature.summary.passRatePercent}}<span>%</span></p>
             <p class="qa-hero__caption">
-              {{feature.summary.pass}}/{{feature.summary.total}} scenarios aprobados
+              {{feature.summary.total}} scenario{{pluralize feature.summary.total}} ejecutados
             </p>
             {{#if feature.firstFailedScenarioId}}
               <button

@@ -39,6 +39,7 @@ async function buildContext(projectRoot: string, port: number): Promise<ServerCo
   return {
     config,
     logger: noopLogger,
+    configFilePath: join(projectRoot, 'qa-config.json'),
     projectRoot,
     sessionFilePath: join(projectRoot, '.qa-evidence-reporter', 'session.json'),
     featuresDir,

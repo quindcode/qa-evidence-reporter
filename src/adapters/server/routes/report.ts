@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { ZipArchive, type ArchiverError } from 'archiver';
 import { Router } from 'express';
 
-import { buildQaSummaryCommentHtml } from '../../../core/azureDevOps/index.js';
-import { buildQaSummaryComment } from '../../../core/jira/index.js';
+import { buildQaSummaryCommentHtml, createAzureDevOpsClient } from '../../../core/azureDevOps/index.js';
+import { buildQaSummaryComment, createJiraClient } from '../../../core/jira/index.js';
 import {
   createHandlebarsTemplateEngine,
   createReportGenerator,
@@ -53,7 +53,10 @@ export function createReportRouter(context: ServerContext, services: CoreService
       const templateEngine = createHandlebarsTemplateEngine(context.templateDir);
       const generator = createReportGenerator(
         {
-          projectName: context.config.projectName,
+          // `settingsService`, no `context.config`: el nombre de proyecto
+          // puede haber cambiado en caliente desde que arrancó el server
+          // (ver `PATCH /api/settings`) — ver JSDoc de `ServerContext.config`.
+          projectName: services.settingsService.getPublicSettings().projectName,
           evidenceBaseDir: context.evidenceBaseDir,
           branding: {
             logoAbsolutePath: context.brandingLogoAbsolutePath,
@@ -129,11 +132,11 @@ export function createReportRouter(context: ServerContext, services: CoreService
 
       const trimmedIssueKey = issueKey.trim();
       const zipBuffer = await buildReportZipBuffer(context.reportsDir);
-      const { issueUrl } = await services.jiraClient.attachReport(
-        trimmedIssueKey,
-        zipBuffer,
-        'qa-report.zip',
-      );
+      // Construido al vuelo con las credenciales VIGENTES (ver JSDoc de
+      // `CoreServices` en `services.ts`) — nunca una instancia guardada de
+      // antes, que congelaría el token/baseUrl del momento del boot.
+      const jiraClient = createJiraClient(services.settingsService.getJiraCredentials());
+      const { issueUrl } = await jiraClient.attachReport(trimmedIssueKey, zipBuffer, 'qa-report.zip');
 
       // Sin sesión guardada (caso raro: se cerró después de generar el
       // reporte) no hay de dónde sacar el resumen de scenarios — el adjunto
@@ -143,7 +146,7 @@ export function createReportRouter(context: ServerContext, services: CoreService
       // cualquier otro fallo de `attachReport`.
       const session = await loadCurrentSessionOrNull(services.sessionEngine);
       if (session) {
-        await services.jiraClient.addComment(trimmedIssueKey, buildQaSummaryComment(session));
+        await jiraClient.addComment(trimmedIssueKey, buildQaSummaryComment(session));
       }
 
       context.logger.info('Reporte adjuntado a Jira', { issueKey: trimmedIssueKey });
@@ -171,7 +174,10 @@ export function createReportRouter(context: ServerContext, services: CoreService
       }
 
       const zipBuffer = await buildReportZipBuffer(context.reportsDir);
-      const { workItemUrl } = await services.azureDevOpsClient.attachReport(
+      // Ver el comentario equivalente en "publish-jira": construido al
+      // vuelo con las credenciales vigentes, nunca una instancia guardada.
+      const azureDevOpsClient = createAzureDevOpsClient(services.settingsService.getAzureCredentials());
+      const { workItemUrl } = await azureDevOpsClient.attachReport(
         workItemId,
         zipBuffer,
         'qa-report.zip',
@@ -184,10 +190,7 @@ export function createReportRouter(context: ServerContext, services: CoreService
       // `attachReport`.
       const session = await loadCurrentSessionOrNull(services.sessionEngine);
       if (session) {
-        await services.azureDevOpsClient.addComment(
-          workItemId,
-          buildQaSummaryCommentHtml(session),
-        );
+        await azureDevOpsClient.addComment(workItemId, buildQaSummaryCommentHtml(session));
       }
 
       context.logger.info('Reporte adjuntado a Azure DevOps', { workItemId });

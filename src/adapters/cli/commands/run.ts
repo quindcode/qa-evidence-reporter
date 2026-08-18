@@ -104,6 +104,7 @@ export async function runRun(cwd: string, deps: RunCommandDeps = {}): Promise<Ru
   const serverContext: ServerContext = {
     config,
     logger,
+    configFilePath,
     projectRoot: cwd,
     sessionFilePath,
     featuresDir,

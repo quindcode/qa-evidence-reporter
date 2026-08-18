@@ -136,6 +136,39 @@ export interface AzureDevOpsFeatureConfig {
 }
 
 /**
+ * Forma de `GET /api/settings` / `PATCH /api/settings` / `POST
+ * /api/settings/jira-token` / `POST /api/settings/azure-token` (ver
+ * `adapters/server/routes/settings.ts`). A diferencia de
+ * `JiraFeatureConfig`/`AzureDevOpsFeatureConfig` (solo el booleano
+ * derivado), acá SÍ viajan `baseUrl`/`email`/`organizationUrl`/`project`
+ * completos — es la pantalla de Configuración, tiene que poder mostrarlos
+ * para editarlos. El token/PAT en sí NUNCA viaja, ni siquiera acá:
+ * `tokenConfigured` es lo único que la UI puede saber sobre él (ver
+ * `settingsService.ts`, "no secreto" vs. "secreto, solo en memoria del
+ * server").
+ */
+export interface Settings {
+  projectName: string;
+  jira: {
+    baseUrl: string | null;
+    email: string | null;
+    tokenConfigured: boolean;
+  };
+  azureDevOps: {
+    organizationUrl: string | null;
+    project: string | null;
+    tokenConfigured: boolean;
+  };
+}
+
+/** Patch parcial aceptado por `PATCH /api/settings` — mismos campos que `Settings`, todos opcionales. */
+export interface SettingsPatch {
+  projectName?: string;
+  jira?: { baseUrl?: string | null; email?: string | null };
+  azureDevOps?: { organizationUrl?: string | null; project?: string | null };
+}
+
+/**
  * Deriva el resultado de un scenario a partir de sus steps — misma tabla de
  * prioridad que `core/types/session.ts` (`deriveScenarioResult`,
  * `fail > pending > skip > pass`), duplicada acá por la misma razón que el

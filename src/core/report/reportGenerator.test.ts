@@ -193,7 +193,7 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     expect(indexHtml).not.toContain('Checkout');
   });
 
-  it('el dashboard y el detalle de feature ofrecen un link "Ver primer fallo" al primer scenario fallido, y no aparece donde no hay fallos', async () => {
+  it('el dashboard lista el scenario fallido (feature + scenario + link), y el detalle de feature ofrece su propio "Ver primer fallo"', async () => {
     const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
     const generator = createReportGenerator(
       { projectName: 'Proyecto Demo', evidenceBaseDir },
@@ -208,9 +208,13 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     const expectedAnchor = `scenario-${checkoutScenarioId}`;
 
     const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
-    expect(indexHtml).toContain(
-      `class="qa-jump-to-failure" href="features/f1-checkout.html#${expectedAnchor}"`,
-    );
+    // El dashboard ya NO usa un único link "Ver primer fallo" — lista TODOS
+    // los scenarios fallidos citando feature + scenario (ver
+    // partials/failed-scenarios.hbs).
+    expect(indexHtml).toContain('1 scenario fallido');
+    expect(indexHtml).toContain('Checkout');
+    expect(indexHtml).toContain('Pay with card');
+    expect(indexHtml).toContain(`href="features/f1-checkout.html#${expectedAnchor}"`);
 
     const checkoutHtml = await readFile(join(outputDir, 'features', 'f1-checkout.html'), 'utf-8');
     expect(checkoutHtml).toContain(`id="${expectedAnchor}"`);
@@ -229,6 +233,80 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     // Login no tiene ningún fallo -> sin botón "Ver primer fallo" en su página.
     const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
     expect(loginHtml).not.toContain(`class="qa-jump-to-failure"`);
+  });
+
+  it('el dashboard lista TODOS los scenarios fallidos cuando hay más de uno (no solo el primero)', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+
+    // Sesión propia con fallos en AMBOS features (Login y Checkout), a
+    // diferencia del `sessionState` del beforeEach donde solo Checkout
+    // falla — esto es lo que específicamente preocupaba al feedback: un
+    // link a "el primero" pierde sentido en cuanto hay más de un fallo.
+    const sessionEngine = createSessionEngine(
+      join(evidenceBaseDir, '.qa-evidence-reporter/session-multi-fail.json'),
+    );
+    const created = await sessionEngine.createSession(makeFeatures(), 'Proyecto Demo');
+
+    const loginStep0 = created.selectedFeatures[0]!.scenarios[0]!.steps[0]!;
+    const checkoutStep1 = created.selectedFeatures[1]!.scenarios[0]!.steps[1]!;
+    const loginScenarioId = created.selectedFeatures[0]!.scenarios[0]!.id;
+    const checkoutScenarioId = created.selectedFeatures[1]!.scenarios[0]!.id;
+
+    await sessionEngine.setStepResult(loginStep0.id, 'fail', { defectDescription: 'Login roto' });
+    const finalState = await sessionEngine.setStepResult(checkoutStep1.id, 'fail', {
+      defectDescription: 'Checkout roto',
+    });
+
+    await generator.generate(finalState, outputDir);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    expect(indexHtml).toContain('2 scenarios fallidos');
+    expect(indexHtml).toContain('Login');
+    expect(indexHtml).toContain('Successful login');
+    expect(indexHtml).toContain('Checkout');
+    expect(indexHtml).toContain('Pay with card');
+    // Ambos links presentes — ninguno "se pierde" por listar solo el primero.
+    expect(indexHtml).toContain(`href="features/f0-login.html#scenario-${loginScenarioId}"`);
+    expect(indexHtml).toContain(`href="features/f1-checkout.html#scenario-${checkoutScenarioId}"`);
+  });
+
+  it('sin ningún scenario fallido, el dashboard no muestra la sección de fallos', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+
+    const sessionEngine = createSessionEngine(
+      join(evidenceBaseDir, '.qa-evidence-reporter/session-no-fail.json'),
+    );
+    const created = await sessionEngine.createSession(makeFeatures(), 'Proyecto Demo');
+
+    let finalState = created;
+    for (const feature of created.selectedFeatures) {
+      for (const scenario of feature.scenarios) {
+        for (const step of scenario.steps) {
+          finalState = await sessionEngine.setStepResult(step.id, 'pass');
+        }
+      }
+    }
+
+    await generator.generate(finalState, outputDir);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    // Nota: no se puede buscar substrings como "scenario fallido" o la clase
+    // suelta "qa-failed-list" — `styles.hbs` (compartido por todas las
+    // páginas) define esas reglas CSS y ese comentario incondicionalmente,
+    // se use o no la sección en esta página en particular. Se verifica en
+    // cambio que el HEADING/ID de la sección renderizada no aparezca.
+    expect(indexHtml).not.toContain('qa-card--failed-scenarios');
+    expect(indexHtml).not.toContain('id="qa-failed-scenarios-heading"');
   });
 
   it('el index.html muestra los nombres de feature, badges de resultado y % correcto', async () => {

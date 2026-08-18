@@ -253,4 +253,44 @@ describe('createConfigLoader', () => {
       );
     });
   });
+
+  describe('saveConfig', () => {
+    it('escribe el config completo como JSON legible en la ruta pedida', async () => {
+      const writes: Array<{ filePath: string; contents: string }> = [];
+      const loader = createConfigLoader({
+        writeFile: async (filePath, contents) => {
+          writes.push({ filePath, contents });
+        },
+      });
+      const full = {
+        projectName: 'Checkout QA',
+        team: [],
+        featuresDir: 'features',
+        evidenceDir: 'evidence',
+        reportsDir: 'reports',
+        server: { port: 3000, openBrowser: true },
+        evidence: { maxFileSizeMB: 50, allowedFormats: ['png'] },
+        logging: { level: 'info' as const },
+        branding: {
+          logoPath: null,
+          primaryColor: null,
+          accentColor: null,
+          highlightColor: null,
+          ctaColor: null,
+        },
+        jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
+        azureDevOps: { organizationUrl: null, project: null },
+        reportTemplate: null,
+      };
+
+      await loader.saveConfig('/proj/qa-config.json', full);
+
+      expect(writes).toHaveLength(1);
+      expect(writes[0].filePath).toBe('/proj/qa-config.json');
+      expect(JSON.parse(writes[0].contents)).toEqual(full);
+      // Legible (con indentación), no un JSON.stringify de una sola línea —
+      // alguien puede seguir editando el archivo a mano después.
+      expect(writes[0].contents).toContain('\n  "projectName"');
+    });
+  });
 });

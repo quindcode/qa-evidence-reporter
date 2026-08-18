@@ -25,11 +25,8 @@
               aria-label="Tasa de aprobación: {{summary.passRatePercent}}%"
             ></div>
             <p class="qa-hero__caption">
-              aprobado sobre {{summary.total}} scenario{{pluralize summary.total}} ejecutados
+              {{summary.total}} scenario{{pluralize summary.total}} ejecutados
             </p>
-            {{#if firstFailureHref}}
-              <a class="qa-jump-to-failure" href="{{basePath}}{{firstFailureHref}}">{{> icon-alert}} Ver primer fallo</a>
-            {{/if}}
           </div>
           <div class="qa-hero__chart">
             <div
@@ -58,6 +55,10 @@
           </div>
         </div>
       </section>
+
+      {{#if failedScenarios.length}}
+        {{> failed-scenarios failedScenarios=failedScenarios basePath=basePath}}
+      {{/if}}
 
       {{#if dashboard.showFeatureBars}}
         <section class="qa-card" aria-labelledby="qa-feature-bars-heading">

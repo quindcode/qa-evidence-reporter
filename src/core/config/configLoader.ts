@@ -1,4 +1,4 @@
-import { readFile as readFileFs } from 'node:fs/promises';
+import { readFile as readFileFs, writeFile as writeFileFs } from 'node:fs/promises';
 
 import { QaConfigSchema } from '../types/config.js';
 import type { QaConfig } from '../types/config.js';
@@ -8,12 +8,15 @@ import type { ConfigValidationIssue } from '../types/errors.js';
 /**
  * Punto de extensión mínimo para inyectar dependencias en
  * `createConfigLoader`, mismo patrón que `GherkinParserDeps.readFile`
- * (`core/parser/gherkinParser.ts`): por defecto lee del filesystem real, los
- * tests pueden inyectar una lectura en memoria sin tocar disco.
+ * (`core/parser/gherkinParser.ts`): por defecto lee/escribe el filesystem
+ * real, los tests pueden inyectar ambas operaciones en memoria sin tocar
+ * disco.
  */
 export interface ConfigLoaderDeps {
   /** Por defecto `(filePath) => readFile(filePath, 'utf-8')`. */
   readFile?: (filePath: string) => Promise<string>;
+  /** Por defecto `(filePath, contents) => writeFile(filePath, contents, 'utf-8')`. */
+  writeFile?: (filePath: string, contents: string) => Promise<void>;
 }
 
 /** Puerto mínimo devuelto por `createConfigLoader`. */
@@ -44,6 +47,25 @@ export interface ConfigLoader {
    * lista COMPLETA de problemas encontrados.
    */
   loadConfig(configFilePath: string): Promise<QaConfig>;
+
+  /**
+   * Escribe `config` como JSON legible en `configFilePath` — usado por el
+   * server (ver `adapters/server/settingsService.ts`) para persistir los
+   * campos NO secretos que la UI deja editar (nombre de proyecto, `baseUrl`/
+   * `email` de Jira, `organizationUrl`/`project` de Azure DevOps) sin que el
+   * QA tenga que volver a tocar el archivo a mano.
+   *
+   * Serializa el `QaConfig` COMPLETO (ya con sus defaults aplicados, ver
+   * `QaConfigSchema`), nunca un patch parcial — por eso el caller siempre
+   * debe pasar el objeto resultante de mezclar el patch sobre la config
+   * actual, no el patch solo. Como contrapartida, cualquier clave que no
+   * modela el esquema (p. ej. el `"$schema"` que escribe `init` como hint
+   * de editor) se pierde en el primer guardado — es un costo aceptado, no
+   * un bug: `QaConfigSchema` ya lo descarta al cargar (ver JSDoc de
+   * `QaConfigSchema`), así que no hay forma de conservarlo sin leer el JSON
+   * crudo aparte solo para ese fin.
+   */
+  saveConfig(configFilePath: string, config: QaConfig): Promise<void>;
 }
 
 /**
@@ -61,6 +83,7 @@ export interface ConfigLoader {
  */
 export function createConfigLoader(deps: ConfigLoaderDeps = {}): ConfigLoader {
   const readFile = deps.readFile ?? ((filePath: string) => readFileFs(filePath, 'utf-8'));
+  const writeFile = deps.writeFile ?? ((filePath: string, contents: string) => writeFileFs(filePath, contents, 'utf-8'));
 
   async function loadConfig(configFilePath: string): Promise<QaConfig> {
     let raw: string;
@@ -93,7 +116,11 @@ export function createConfigLoader(deps: ConfigLoaderDeps = {}): ConfigLoader {
     return result.data;
   }
 
-  return { loadConfig };
+  async function saveConfig(configFilePath: string, config: QaConfig): Promise<void> {
+    await writeFile(configFilePath, `${JSON.stringify(config, null, 2)}\n`);
+  }
+
+  return { loadConfig, saveConfig };
 }
 
 function toIssues(error: {

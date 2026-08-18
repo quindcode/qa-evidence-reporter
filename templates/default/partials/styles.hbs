@@ -498,9 +498,12 @@
     max-width: 28ch;
   }
 
-  /* Salta directo al primer scenario fallido (ver `firstFailureHref`/
-     `firstFailedScenarioId` en reportGenerator.ts) en vez de depender solo
-     de scroll + rail-scanning — no aparece si no hay ningún fallo. */
+  /* Salta directo al primer scenario fallido DE ESTE FEATURE (ver
+     `firstFailedScenarioId` en reportGenerator.ts, usado solo por
+     feature-detail.hbs) en vez de depender solo de scroll + rail-scanning
+     — no aparece si no hay ningún fallo. El dashboard (`index.hbs`) ya NO
+     usa esta clase: lista TODOS los fallos de la sesión en vez de un
+     único link al primero, ver `partials/failed-scenarios.hbs`. */
   .qa-jump-to-failure {
     display: inline-flex;
     align-items: center;
@@ -518,6 +521,87 @@
 
   .qa-jump-to-failure:hover {
     filter: brightness(1.05);
+  }
+
+  /* Sección "N scenarios fallidos" del dashboard (ver
+     partials/failed-scenarios.hbs) — lista TODOS los fallos de la sesión,
+     nunca solo el primero. */
+  .qa-section-heading--fail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--qa-fail-on-tint);
+  }
+
+  .qa-failed-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    /* Con pocos ítems no se nota; con varios, esta card nunca crece sin
+       límite — se ve TODO scrolleando adentro de una altura fija, en vez
+       de truncado/escondido (ver JSDoc de failed-scenarios.hbs). */
+    max-height: 320px;
+    overflow-y: auto;
+    /* Sin esto, el sangrado negativo de `.qa-failed-list__link` (necesario
+       para que el hover pinte hasta el borde de la card) dispara un
+       scrollbar horizontal fantasma: al fijar overflow-y, el eje X pasa de
+       'visible' a 'auto' implícitamente si no se lo fija explícito. */
+    overflow-x: hidden;
+  }
+
+  .qa-failed-list__item + .qa-failed-list__item {
+    border-top: 1px solid var(--qa-border);
+  }
+
+  .qa-failed-list__link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    margin: 0 -18px;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 8px;
+    transition:
+      background-color 0.18s ease,
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Mismo lenguaje de hover que `.qa-feature-row`/`.qa-stat` (ver Regla de
+     la Elevación en Hover, DESIGN.md) — navega al scenario real, así que
+     lleva la sombra teñida completa (translateY + box-shadow), no la
+     variante puramente táctil de `.qa-stat`. */
+  .qa-failed-list__link:hover {
+    background: var(--qa-bg);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-fail-on-tint) 35%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .qa-failed-list__link:hover {
+      transform: none;
+    }
+  }
+
+  .qa-failed-list__names {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .qa-failed-list__feature {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--qa-fg-muted);
+  }
+
+  .qa-failed-list__scenario {
+    font-weight: 600;
   }
 
   .qa-hero__chart {
@@ -574,6 +658,39 @@
     padding: 10px 12px;
     border-radius: 10px;
     border: 1px solid transparent;
+    transition:
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Segunda excepción sancionada a "La Regla de lo Plano por Defecto" (ver
+     DESIGN.md, Elevation & Depth) — a diferencia de `.qa-feature-row`, este
+     chip no navega a ningún lado al clickearlo; el hover acá es puramente
+     táctil/vivo (a pedido explícito de "ponerle efectos con sombras... al
+     pasar el mouse"), no una señal de afordancia. Por eso NO lleva
+     `cursor: pointer` — nada finge ser clickeable. Mismo lenguaje de sombra
+     que el resto del sistema (offset+blur real, teñida del color on-tint
+     propio de cada variante) para no inventar un segundo vocabulario. */
+  .qa-stat:hover {
+    transform: translateY(-2px);
+  }
+  .qa-stat--pass:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-pass-on-tint) 35%, transparent);
+  }
+  .qa-stat--fail:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-fail-on-tint) 35%, transparent);
+  }
+  .qa-stat--skip:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-skip-on-tint) 35%, transparent);
+  }
+  .qa-stat--pending:hover {
+    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-pending-on-tint) 35%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .qa-stat:hover {
+      transform: none;
+    }
   }
 
   /* Ring de progreso SVG (ver la nota de diseño en partials/legend.hbs) —
@@ -660,9 +777,15 @@
     min-width: 0;
   }
 
+  /* Conteo y label al mismo `font-size` (0.95rem) a pedido explícito — antes
+     el conteo (1.3rem) dominaba visualmente sobre el label (0.78rem). La
+     jerarquía entre ambos ya no viene del tamaño sino de familia (Display
+     vs. Body) y peso (800 vs. 600), igual que en el resto del sistema desde
+     que la tipografía redondeada separó esos dos ejes (ver DESIGN.md,
+     Typography). */
   .qa-stat__count {
     font-family: var(--qa-font-display);
-    font-size: 1.3rem;
+    font-size: 0.95rem;
     font-weight: 800;
     line-height: 1;
   }
@@ -671,7 +794,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    font-size: 0.78rem;
+    font-size: 0.95rem;
     font-weight: 600;
   }
 

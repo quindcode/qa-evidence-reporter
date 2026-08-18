@@ -17,7 +17,7 @@ import type { StepResult } from './types';
 export const RESULT_COLORS: Readonly<Record<StepResult, string>> = {
   pass: '#15803d',
   fail: '#b91c1c',
-  skip: '#57534e',
+  skip: '#475569',
   pending: '#b45309',
 };
 

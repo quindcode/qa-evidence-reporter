@@ -22,8 +22,20 @@ const CONFIG_FILE_NAME = 'qa-config.json';
  * `qa-config.json` real en disco.
  */
 export interface ServerContext {
+  /**
+   * Snapshot de `qa-config.json` leído al levantar el server — NUNCA se
+   * muta después. Los campos que la UI deja editar en caliente (nombre de
+   * proyecto, `jira.baseUrl`/`email`, `azureDevOps.organizationUrl`/
+   * `project`) viven, a partir de ese boot, en `SettingsService` (ver
+   * `settingsService.ts`), que arranca con una COPIA de este objeto y es de
+   * ahí en más la fuente de verdad — cualquier ruta que necesite el valor
+   * VIGENTE de esos campos debe leerlo de `services.settingsService`, no
+   * de `context.config`.
+   */
   config: QaConfig;
   logger: Logger;
+  /** Ruta absoluta a `qa-config.json` — la necesita `SettingsService` para persistir los cambios que llegan vía `PATCH /api/settings`. */
+  configFilePath: string;
   /** Raíz del proyecto del QA (cwd de donde se sirve `qa-evidence-reporter run`, en producción). */
   projectRoot: string;
   /** Ruta absoluta a `.qa-evidence-reporter/session.json`. */
@@ -88,6 +100,7 @@ export async function buildServerContext(
   return {
     config,
     logger,
+    configFilePath,
     projectRoot,
     sessionFilePath: join(sessionDir, SESSION_FILE_NAME),
     featuresDir: resolve(projectRoot, config.featuresDir),

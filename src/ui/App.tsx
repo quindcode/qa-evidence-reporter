@@ -6,6 +6,7 @@ import { ApiRequestError } from './api';
 import { ErrorBanner } from './components/ErrorBanner';
 import { FeatureSelect } from './components/FeatureSelect';
 import { Runner } from './components/Runner';
+import { SettingsPanel } from './components/SettingsPanel';
 import { ThemeToggle } from './components/ThemeToggle';
 import { pickReadableTextColor } from './colors';
 import { useTheme } from './hooks/useTheme';
@@ -13,11 +14,12 @@ import type {
   Branding,
   CurrentStepInfo,
   FeatureSummary,
+  Settings,
   SessionState,
   SessionSummary,
 } from './types';
 
-type Phase = 'loading' | 'select' | 'runner';
+type Phase = 'loading' | 'select' | 'runner' | 'settings';
 
 const NO_BRANDING: Branding = {
   logoUrl: null,
@@ -75,6 +77,10 @@ export function App(): JSX.Element {
   const [branding, setBranding] = useState<Branding>(NO_BRANDING);
   const [jiraEnabled, setJiraEnabled] = useState(false);
   const [azureDevOpsEnabled, setAzureDevOpsEnabled] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  // A qué fase volver al cerrar Configuración — 'select' o 'runner', nunca
+  // 'settings' ni 'loading' (no tendría sentido "volver" a esas dos).
+  const [phaseBeforeSettings, setPhaseBeforeSettings] = useState<Phase>('select');
 
   const loadFeatures = useCallback(async () => {
     try {
@@ -150,6 +156,37 @@ export function App(): JSX.Element {
     void loadFeatures();
   }
 
+  async function handleOpenSettings(): Promise<void> {
+    setBusy(true);
+    try {
+      const response = await api.getSettings();
+      setSettings(response);
+      setPhaseBeforeSettings(phase === 'settings' ? 'select' : phase);
+      setPhase('settings');
+    } catch (err) {
+      setError(err as ApiRequestError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Tras cualquier cambio en Configuración (el PATCH no-secreto o un token):
+   * actualiza el estado local del panel Y recarga `GET /api/features` — el
+   * nombre de proyecto/logo del header y `jiraEnabled`/`azureDevOpsEnabled`
+   * (que deciden si `Runner` muestra los botones de publicar) viven en ESE
+   * estado, no en `settings`, así que sin este refresh quedarían mostrando
+   * datos viejos hasta la próxima recarga completa de la página.
+   */
+  function handleSettingsUpdate(nextSettings: Settings): void {
+    setSettings(nextSettings);
+    void loadFeatures();
+  }
+
+  function handleCloseSettings(): void {
+    setPhase(phaseBeforeSettings);
+  }
+
   return (
     <div class="app">
       <header class={`app-header${isBranded ? ' app-header--branded' : ''}`}>
@@ -159,7 +196,17 @@ export function App(): JSX.Element {
           )}
           <h1 class="app-header__title">{projectName}</h1>
         </div>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <div class="app-header__actions">
+          <button
+            type="button"
+            class="button button--link"
+            onClick={() => void handleOpenSettings()}
+            disabled={busy}
+          >
+            ⚙️ Configuración
+          </button>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
       </header>
       {isBranded && <div class="app-header__stripe" aria-hidden="true" />}
 
@@ -189,6 +236,15 @@ export function App(): JSX.Element {
             onSessionClosed={handleSessionClosed}
             jiraEnabled={jiraEnabled}
             azureDevOpsEnabled={azureDevOpsEnabled}
+          />
+        )}
+
+        {phase === 'settings' && settings && (
+          <SettingsPanel
+            settings={settings}
+            onSettingsUpdate={handleSettingsUpdate}
+            onError={setError}
+            onClose={handleCloseSettings}
           />
         )}
       </main>

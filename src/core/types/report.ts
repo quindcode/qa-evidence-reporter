@@ -264,14 +264,23 @@ export interface ReportData {
   resultLabels: Readonly<Record<StepResult, string>>;
   features: FeatureReportView[];
   /**
-   * Ruta relativa a la raíz de `outputDir` (combina `detailPath` del
-   * primer feature fallido + `#scenario-{id}` de su primer scenario
-   * fallido, p. ej. `"features/f0-login.html#scenario-f0-login_s1-..."`),
-   * o `undefined` si ningún step de toda la sesión falló. El dashboard usa
-   * esto para un link "Ver primer fallo" que salta directo al primer
-   * problema real sin depender de scroll+rail-scanning por feature.
+   * UN link por cada scenario con `result === 'fail'` de TODA la sesión
+   * (cualquier feature), en el mismo orden que `features`/`scenarios` —
+   * array vacío si nada falló. Reemplaza al link único "Ver primer fallo"
+   * de versiones anteriores (que solo apuntaba al PRIMER fallo): cuando
+   * fallan varios scenarios, un solo link que solo menciona "el primero"
+   * pierde sentido — el dashboard lista todos, citando feature+scenario
+   * para que se sepa exactamente cuál es cuál sin tener que adivinar.
    */
-  firstFailureHref?: string;
+  failedScenarios: FailedScenarioLink[];
+}
+
+/** Un ítem de `ReportData.failedScenarios` — ver su JSDoc. */
+export interface FailedScenarioLink {
+  featureName: string;
+  scenarioName: string;
+  /** Relativo a la raíz de `outputDir`, p. ej. `"features/f0-login.html#scenario-f0-login_s1-..."`. */
+  href: string;
 }
 
 /**

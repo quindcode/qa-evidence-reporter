@@ -5,6 +5,8 @@ import type {
   EvidenceFile,
   FeatureSummary,
   JiraFeatureConfig,
+  Settings,
+  SettingsPatch,
   SessionState,
   SessionSummary,
   StepResult,
@@ -216,6 +218,35 @@ export const api = {
 
   closeSession(): Promise<{ closed: true }> {
     return request<{ closed: true }>('/api/session/close', { method: 'POST' });
+  },
+
+  getSettings(): Promise<Settings> {
+    return request<Settings>('/api/settings');
+  },
+
+  updateSettings(patch: SettingsPatch): Promise<Settings> {
+    return request<Settings>('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+  },
+
+  /** `token: null` limpia el token vigente (ver `SettingsService.setJiraToken`) — nunca se persiste en disco, solo vive en memoria del server para esta sesión. */
+  setJiraToken(token: string | null): Promise<Settings> {
+    return request<Settings>('/api/settings/jira-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  setAzureToken(token: string | null): Promise<Settings> {
+    return request<Settings>('/api/settings/azure-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
   },
 };
 
