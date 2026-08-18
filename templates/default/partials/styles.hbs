@@ -247,6 +247,14 @@
     padding: 32px 20px 80px;
   }
 
+  /* Sin branding configurado, el header no tenía ningún acento — plano de
+     título+meta+toggle, mientras el resto del sistema ya "respira" con
+     glow/sombra/color. Un borde de 2px en `--qa-link` (el mismo acento
+     neutro que ya usan los links del reporte, o `accentColor` si hay marca)
+     le da un ancla visual sin inventar una franja de 3 colores que no
+     existe sin branding — la variante con marca ya tiene su propia franja
+     de 5px (`.qa-brand-stripe`, ver debajo), así que esto es exclusivo del
+     caso sin marca. */
   .qa-topbar {
     display: flex;
     align-items: center;
@@ -254,6 +262,8 @@
     gap: 12px;
     flex-wrap: wrap;
     margin-bottom: 36px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--qa-link);
   }
 
   /* Sin eyebrow arriba del título (ver header.hbs): el <h1> es lo primero
@@ -559,11 +569,95 @@
 
   .qa-stat {
     display: flex;
-    align-items: baseline;
-    gap: 9px;
+    align-items: center;
+    gap: 12px;
     padding: 10px 12px;
     border-radius: 10px;
     border: 1px solid transparent;
+  }
+
+  /* Ring de progreso SVG (ver la nota de diseño en partials/legend.hbs) —
+     36x36 de viewBox, pintado a 34px reales. `currentColor` en ambos
+     círculos: heredan el color on-tint que ya fija `.qa-stat--pass/etc`,
+     así que el ring "sabe" su color sin que ninguna regla nueva lo repita
+     por variante. */
+  .qa-stat__ring {
+    position: relative;
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+  }
+
+  .qa-stat__ring svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .qa-stat__ring-track,
+  .qa-stat__ring-fill {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+  }
+
+  .qa-stat__ring-track {
+    opacity: 0.18;
+  }
+
+  /* Entrada del ring (ver DESIGN.md, Motion): el mismo "se dibuja en vez de
+     aparecer" del gauge del hero, a escala de chip — `stroke-dashoffset`
+     arranca en la circunferencia completa (97.39, para r=15.5) y anima a 0,
+     revelando el arco ya calculado server-side en `stroke-dasharray` (ver
+     legend.hbs). Escalonado por chip (`:nth-child`), mismo ritmo que la
+     cascada de la barra apilada — un mismo lenguaje de "las cosas se
+     revelan en cascada", no cuatro momentos autorales sueltos. */
+  .qa-stat__ring-fill {
+    stroke-linecap: round;
+    stroke-dashoffset: 97.39;
+    animation: qa-stat-ring-fill 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes qa-stat-ring-fill {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .qa-stat:nth-child(2) .qa-stat__ring-fill {
+    animation-delay: 90ms;
+  }
+  .qa-stat:nth-child(3) .qa-stat__ring-fill {
+    animation-delay: 180ms;
+  }
+  .qa-stat:nth-child(4) .qa-stat__ring-fill {
+    animation-delay: 270ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .qa-stat__ring-fill {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .qa-stat__ring-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .qa-stat__ring-icon .qa-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .qa-stat__body {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    min-width: 0;
   }
 
   .qa-stat__count {

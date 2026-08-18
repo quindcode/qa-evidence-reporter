@@ -4,22 +4,111 @@
   lista plana de punto+texto — cada chip es su propia mini tarjeta con el
   conteo real como protagonista, no una leyenda de gráfico como
   afterthought. Recibe `summary` (ver core/types/report.ts, ResultSummary).
+
+  Cada chip suma un ring de progreso SVG (mismo ícono de trazo único que ya
+  usa el badge de ese resultado, centrado adentro) — CSS/SVG puro, sin
+  ECharts: es un elemento chico que se repite 4 veces y no necesita
+  interactividad propia (mismo criterio que `feature-progress-bar.hbs`, ver
+  DESIGN.md). El arco muestra la proporción real de ESE resultado sobre el
+  total de scenarios — no es decorativo, es el mismo dato que ya está en el
+  texto, reforzado visualmente. `stroke="currentColor"` en ambos círculos y
+  `color: inherit` en el ícono: heredan el color on-tint que ya fija
+  `.qa-stat--pass/fail/skip/pending`, así que no hace falta repetir el color
+  por variante en ningún lado nuevo.
+
+  El círculo de relleno solo se renderiza si el porcentaje es > 0: con
+  `stroke-dasharray="0.00 97.39"` + `stroke-linecap: round`, el navegador
+  igual pinta un punto redondeado en el punto de inicio (un cap con ancho
+  propio, aunque el largo del trazo sea cero) — un defecto visible real en
+  "Pendientes" cuando da 0%, no algo cosmético a ignorar.
 --}}
 <ul class="qa-stats">
   <li class="qa-stat qa-stat--pass">
-    <span class="qa-stat__count">{{summary.pass}}</span>
-    <span class="qa-stat__label">Aprobados <span class="qa-stat__percent">{{percentOf summary.pass summary.total}}%</span></span>
+    <span class="qa-stat__ring" aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <circle class="qa-stat__ring-track" cx="18" cy="18" r="15.5"></circle>
+        {{#if (percentOf summary.pass summary.total)}}
+          <circle
+            class="qa-stat__ring-fill"
+            cx="18"
+            cy="18"
+            r="15.5"
+            stroke-dasharray="{{ringDashArray (percentOf summary.pass summary.total)}}"
+            transform="rotate(-90 18 18)"
+          ></circle>
+        {{/if}}
+      </svg>
+      <span class="qa-stat__ring-icon">{{> icon-check}}</span>
+    </span>
+    <span class="qa-stat__body">
+      <span class="qa-stat__count">{{summary.pass}}</span>
+      <span class="qa-stat__label">Aprobados <span class="qa-stat__percent">{{percentOf summary.pass summary.total}}%</span></span>
+    </span>
   </li>
   <li class="qa-stat qa-stat--fail">
-    <span class="qa-stat__count">{{summary.fail}}</span>
-    <span class="qa-stat__label">Fallidos <span class="qa-stat__percent">{{percentOf summary.fail summary.total}}%</span></span>
+    <span class="qa-stat__ring" aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <circle class="qa-stat__ring-track" cx="18" cy="18" r="15.5"></circle>
+        {{#if (percentOf summary.fail summary.total)}}
+          <circle
+            class="qa-stat__ring-fill"
+            cx="18"
+            cy="18"
+            r="15.5"
+            stroke-dasharray="{{ringDashArray (percentOf summary.fail summary.total)}}"
+            transform="rotate(-90 18 18)"
+          ></circle>
+        {{/if}}
+      </svg>
+      <span class="qa-stat__ring-icon">{{> icon-x}}</span>
+    </span>
+    <span class="qa-stat__body">
+      <span class="qa-stat__count">{{summary.fail}}</span>
+      <span class="qa-stat__label">Fallidos <span class="qa-stat__percent">{{percentOf summary.fail summary.total}}%</span></span>
+    </span>
   </li>
   <li class="qa-stat qa-stat--skip">
-    <span class="qa-stat__count">{{summary.skip}}</span>
-    <span class="qa-stat__label">Omitidos <span class="qa-stat__percent">{{percentOf summary.skip summary.total}}%</span></span>
+    <span class="qa-stat__ring" aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <circle class="qa-stat__ring-track" cx="18" cy="18" r="15.5"></circle>
+        {{#if (percentOf summary.skip summary.total)}}
+          <circle
+            class="qa-stat__ring-fill"
+            cx="18"
+            cy="18"
+            r="15.5"
+            stroke-dasharray="{{ringDashArray (percentOf summary.skip summary.total)}}"
+            transform="rotate(-90 18 18)"
+          ></circle>
+        {{/if}}
+      </svg>
+      <span class="qa-stat__ring-icon">{{> icon-minus}}</span>
+    </span>
+    <span class="qa-stat__body">
+      <span class="qa-stat__count">{{summary.skip}}</span>
+      <span class="qa-stat__label">Omitidos <span class="qa-stat__percent">{{percentOf summary.skip summary.total}}%</span></span>
+    </span>
   </li>
   <li class="qa-stat qa-stat--pending">
-    <span class="qa-stat__count">{{summary.pending}}</span>
-    <span class="qa-stat__label">Pendientes <span class="qa-stat__percent">{{percentOf summary.pending summary.total}}%</span></span>
+    <span class="qa-stat__ring" aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <circle class="qa-stat__ring-track" cx="18" cy="18" r="15.5"></circle>
+        {{#if (percentOf summary.pending summary.total)}}
+          <circle
+            class="qa-stat__ring-fill"
+            cx="18"
+            cy="18"
+            r="15.5"
+            stroke-dasharray="{{ringDashArray (percentOf summary.pending summary.total)}}"
+            transform="rotate(-90 18 18)"
+          ></circle>
+        {{/if}}
+      </svg>
+      <span class="qa-stat__ring-icon">{{> icon-clock}}</span>
+    </span>
+    <span class="qa-stat__body">
+      <span class="qa-stat__count">{{summary.pending}}</span>
+      <span class="qa-stat__label">Pendientes <span class="qa-stat__percent">{{percentOf summary.pending summary.total}}%</span></span>
+    </span>
   </li>
 </ul>

@@ -204,12 +204,14 @@ Agregado a pedido explícito de feedback visual ("me hacen falta ciertos efectos
 
 **El momento autoral: el gauge del hero.** Es el único elemento con una animación de entrada deliberadamente larga (`animationDuration: 1400`, `cubicOut`) — el arco "se dibuja" en vez de aparecer, coherente con que es el número protagonista de todo el reporte (ver Regla del Protagonista). Ningún otro elemento compite por esa atención: el resto de las animaciones de entrada son más cortas o directamente utilitarias.
 
+**Entrada secundaria en cascada.** Dos familias de elementos repetidos revelan su valor real en vez de aparecer de golpe, con el mismo ritmo de ~90ms por ítem (nunca un momento autoral propio, subordinadas al gauge): la barra apilada por feature (ECharts `animationDelay`) y los 4 rings de los stat chips (`stroke-dashoffset`, CSS puro — ver Components, Stat Chips). Es un único lenguaje de "las cosas se revelan en cascada", aplicado dos veces, no dos ideas de motion distintas.
+
 **Feedback de interacción (hover), no decoración:**
 - `.qa-feature-row` (navega al detalle): `translateY(-2px)` + sombra teñida del color de resultado (ver Regla de la Elevación en Hover) + el chevron final se desliza `translateX(3px)` — tres señales de "esto te lleva a otro lado", ninguna nueva por sí sola si se mira aislada.
-- Doughnut/barra apilada/sunburst (los 3 charts de ECharts con interacción real — hover en el doughnut, click+navegación en las barras, click-to-zoom en el sunburst): `emphasis.itemStyle` agrega una sombra real (`shadowBlur`/`shadowOffsetY`/`shadowColor`, nunca un halo plano) al segmento/nodo bajo el mouse, sumada al crecimiento (`scaleSize`) que el doughnut ya tenía. Las barras además hacen `cursor: 'pointer'` explícito (son clickeables) y entran con una cascada de ~90ms por fila en vez de todas a la vez.
+- Doughnut/barra apilada/sunburst (los 3 charts de ECharts con interacción real — hover en el doughnut, click+navegación en las barras, click-to-zoom en el sunburst): `emphasis.itemStyle` agrega una sombra real (`shadowBlur`/`shadowOffsetY`/`shadowColor`, nunca un halo plano) al segmento/nodo bajo el mouse, sumada al crecimiento (`scaleSize`) que el doughnut ya tenía. Las barras además hacen `cursor: 'pointer'` explícito (son clickeables).
 - El gauge, el doughnut, la barra y el sunburst comparten la misma lógica de sombra (offset+blur real, nunca colored halo a offset 0) para que la "elevación" se lea como un mismo lenguaje en las 4 superficies del dashboard, no 4 tratamientos distintos.
 
-**Reducción de movimiento.** `prefers-reduced-motion: reduce` apaga el `transform` (translateY/translateX) de `.qa-feature-row` y la duración de entrada de los 4 charts de ECharts (`option.animation = false`, ver `dashboard-charts-script.hbs`) — nunca el feedback de hover en sí (`box-shadow`/color/`scaleSize`), que sigue confirmando la interacción sin desplazamiento espacial. Ningún efecto de esta sección es un loop: todos son de una sola vez (entrada) o atados al mouse (hover), nunca continuos.
+**Reducción de movimiento.** `prefers-reduced-motion: reduce` apaga el `transform` (translateY/translateX) de `.qa-feature-row`, la duración de entrada de los 4 charts de ECharts (`option.animation = false`, ver `dashboard-charts-script.hbs`) y la animación de los 4 rings de stat chip (quedan directamente en su `stroke-dashoffset` final, sin el `@keyframes` de por medio) — nunca el feedback de hover en sí (`box-shadow`/color/`scaleSize`), que sigue confirmando la interacción sin desplazamiento espacial. Ningún efecto de esta sección es un loop: todos son de una sola vez (entrada) o atados al mouse (hover), nunca continuos.
 
 ## Shapes
 
@@ -230,6 +232,8 @@ Dos escalas de radio conviviendo, sin fricción real porque casi nunca aparecen 
 
 Bordes de 1px sólido en el color de línea fina en casi todo; el único borde grueso es el riel de 5px de color de resultado (ver Regla del Riel), que es información, no decoración. El borde ya no es el único recurso de separación del reporte — ver Elevation & Depth para la sombra ambiental que se le suma en reposo.
 
+El redondeo llegó también a los charts de ECharts: la barra apilada por feature suma `itemStyle.borderRadius: 4` en cada segmento — antes era el único elemento del dashboard con esquinas 100% rectas (el doughnut ya redondeaba las suyas). Sin lógica especial por posición (ECharts no distingue "primer/último segmento visible" por fila, solo por serie): las 4 esquinas de cada segmento redondean por igual, dando un aspecto de "piezas" en vez de una sola barra con un borde recto perdido en el medio.
+
 ## Components
 
 ### Buttons (runner)
@@ -247,7 +251,10 @@ Bordes de 1px sólido en el color de línea fina en casi todo; el único borde g
 
 ### Stat Chips (reporte, dashboard y hero de feature)
 - **Shape:** radio `10px` (`sm`), borde 1px en la variante on-tint del color al 28% de opacidad (`color-mix`), fondo en el tinte pálido del estado — misma familia tono-sobre-tono que los badges, pero como mini tarjeta en vez de pill.
-- **Anatomía:** conteo real en Display font (1.3rem/800) + label + porcentaje, en vez de un punto de color seguido de texto plano — reemplaza la leyenda de gráfico clásica (punto+texto) por algo que se lee como dato, no como referencia.
+- **Anatomía:** ring de progreso SVG (34px, `.qa-stat__ring`) + ícono del mismo set que ya usan los badges (check/x/minus/clock, centrado adentro del ring) + conteo real en Display font (1.3rem/800) + label + porcentaje. El ring y el ícono son la novedad de esta pasada (antes el chip era solo texto) — a pedido explícito de "meterle una visual adicional" a estos 4 chips específicamente.
+- **El ring es dato, no decoración:** el arco (`stroke-dasharray`, calculado server-side por el helper `ringDashArray`, ver `templateEngine.ts`) muestra la proporción real de ESE resultado sobre el total de scenarios — el mismo número que ya está en el `%` de texto, reforzado visualmente, nunca un segundo dato inventado. `stroke="currentColor"` + `color: inherit` en el ícono: ambos heredan el color on-tint que ya fija `.qa-stat--pass/fail/skip/pending`, así que ninguna regla nueva repite el color por variante. CSS/SVG puro, sin ECharts — mismo criterio que la micro-barra de progreso por feature (`feature-progress-bar.hbs`): un elemento chico que se repite 4 veces no necesita su propia instancia de chart interactivo.
+- **El círculo de relleno no se renderiza si el porcentaje es 0** (ver el `{{#if}}` en `legend.hbs`): con `stroke-linecap: round`, un `stroke-dasharray` de largo cero igual pinta un punto redondeado visible en el punto de inicio — un defecto real (visto en "Pendientes" en 0%), no cosmético.
+- **Entrada:** el arco se revela con `stroke-dashoffset` (circunferencia completa → 0, 700ms, mismo easing que el gauge del hero) en cascada de 90ms por chip — ver Motion.
 - **Grilla:** 2 columnas, baja a 1 columna por debajo de 480px de ancho.
 
 ### Cards / Containers
@@ -270,7 +277,9 @@ Bordes de 1px sólido en el color de línea fina en casi todo; el único borde g
 
 ### Navigation / Header
 - **Runner:** `.app-header` fijo, logo 32px de alto + título + toggle de tema; variante `--branded` cambia solo fondo/color de texto al color de marca — nunca la tipografía ni el layout.
-- **Reporte:** mismo patrón (`header.hbs`), logo 40px cuando hay branding, franja de marca de 5px debajo del header (`.qa-brand-stripe`) — el único lugar donde los 3 colores vivos de marca aparecen juntos y en orden fijo (acento → highlight → CTA). El `<h1>` usa la clase compartida `.qa-page-title` en ambas variantes (con y sin marca) en vez de un selector compuesto que nombre la clase de marca — así el HTML sin branding configurado no lleva ni el string de esa clase, no solo la deja sin usar.
+- **Reporte, con marca:** mismo patrón (`header.hbs`), logo 40px, franja de marca de 5px debajo del header (`.qa-brand-stripe`) — el único lugar donde los 3 colores vivos de marca aparecen juntos y en orden fijo (acento → highlight → CTA).
+- **Reporte, sin marca:** `.qa-topbar` suma un borde inferior de 2px en `--qa-link` (el acento neutro del documento) — antes no tenía ningún acento, quedaba plano contra el resto del sistema ya modernizado. No es una franja de 3 colores (no hay paleta de marca sin branding que la sostenga), es un ancla mucho más discreta, exclusiva del caso sin marca.
+- El `<h1>` usa la clase compartida `.qa-page-title` en ambas variantes (con y sin marca) en vez de un selector compuesto que nombre la clase de marca — así el HTML sin branding configurado no lleva ni el string de esa clase, no solo la deja sin usar.
 
 ### Signature Component: El Riel de Resultado
 `.qa-rail` es el componente más distintivo del sistema: un `border-left` de 5px que convierte cualquier fila/tarjeta con resultado propio en parte de una columna de color escaneable de un vistazo, como la columna de banderines de una inspección real. Usa la variante on-tint del color (ver Regla del Contraste en Oscuro) — el hex fijo por sí solo cae hasta 2.10:1 contra el fondo neutro de la tarjeta en tema oscuro, ilegible para el componente que más depende de leerse sin texto. Se declara al final de la hoja de estilos a propósito — `.qa-card`/`.qa-scenario` fijan `border` en forma corta (4 lados), así que si `.qa-rail` se declarara antes, el orden en cascada lo pisaría silenciosamente pese a igual especificidad.

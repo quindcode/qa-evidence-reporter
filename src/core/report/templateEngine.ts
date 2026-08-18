@@ -153,6 +153,22 @@ function registerHelpers(handlebars: typeof Handlebars): void {
   // formato del reporte varíe según el locale del sistema donde corrió
   // `generate()` (que no es necesariamente el mismo que el de quien lo lee).
   handlebars.registerHelper('formatDate', (iso: string) => formatDate(iso));
+
+  // `stroke-dasharray` del ring SVG de cada stat chip (ver partials/legend.hbs,
+  // `.qa-stat__ring`) — un ring de progreso puro CSS/SVG, mismo patrón que
+  // `feature-progress-bar.hbs` (micro-visual sin ECharts para un elemento
+  // chico que se repite y no necesita interactividad propia, ver DESIGN.md).
+  // Radio fijo (15.5, calzado con el `viewBox="0 0 36 36"` del SVG): server-side
+  // porque es la MISMA cuenta en todas las filas, no hace falta que el
+  // navegador la recalcule por elemento.
+  handlebars.registerHelper('ringDashArray', (percent: number) => {
+    const radius = 15.5;
+    const circumference = 2 * Math.PI * radius;
+    const clamped = Math.max(0, Math.min(100, percent));
+    const dash = (clamped / 100) * circumference;
+    const gap = circumference - dash;
+    return `${dash.toFixed(2)} ${gap.toFixed(2)}`;
+  });
 }
 
 /** Ver JSDoc del helper `json` — mismo criterio de escape que usan frameworks como Next.js/Rails para JSON embebido en `<script>`. */

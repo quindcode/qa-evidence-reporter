@@ -257,7 +257,15 @@
           // afordancia explícita en vez de depender del cursor default de
           // ECharts.
           cursor: 'pointer',
-          itemStyle: { color: resultColors[key] },
+          // `borderRadius` (ver DESIGN.md, Shapes): antes eran los únicos
+          // segmentos con esquina recta de todo el dashboard — el doughnut
+          // ya redondea sus segmentos (`borderRadius: 6` en
+          // `buildDoughnutOption`), las tarjetas subieron a 20/16/10px. Un
+          // radio chico y uniforme en las 4 esquinas de cada segmento (no
+          // solo en las puntas de la barra) es lo que ECharts permite por
+          // serie sin lógica por-fila — se ve como "piezas" suaves, no
+          // como una barra con un borde recto perdido en el medio.
+          itemStyle: { color: resultColors[key], borderRadius: 4 },
           emphasis: {
             focus: 'series',
             itemStyle: { shadowBlur: 10, shadowOffsetY: 3, shadowColor: 'rgba(0, 0, 0, 0.35)' },
