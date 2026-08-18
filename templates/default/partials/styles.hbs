@@ -437,15 +437,26 @@
     flex-shrink: 0;
   }
 
-  /* Los SVG del dashboard (donut y barra de progreso, ver core/report/charts.ts)
-     tienen width/height fijos como atributos para que sean válidos "sueltos"
-     (p. ej. si alguien los abre fuera de este template). Acá se los fuerza a
-     escalar dentro de su contenedor usando el viewBox — si no, en pantallas
-     angostas la barra de 480px de ancho se sale del .qa-card. */
-  .qa-hero svg {
-    display: block;
+  /* Mount points de ECharts (ver partials/dashboard-charts-script.hbs) — el
+     gauge es ahora el protagonista tipográfico (lleva el % en su centro, en
+     Display font, calculado en JS con la misma fórmula clamp() que
+     `.qa-hero__number` de feature-detail.hbs) así que es más grande que el
+     doughnut, que queda como visual de acompañamiento. Tamaño fijo en px
+     (no `clamp()`): ECharts necesita dimensiones concretas al inicializar
+     el canvas, y `chart.resize()` (ver el script) ya lo mantiene correcto
+     ante cambios de viewport. */
+  .qa-hero__gauge {
+    width: 260px;
+    height: 260px;
     max-width: 100%;
-    height: auto;
+    flex-shrink: 0;
+  }
+
+  .qa-hero__doughnut {
+    width: 200px;
+    height: 200px;
+    max-width: 100%;
+    flex-shrink: 0;
   }
 
   .qa-hero__side {
@@ -534,6 +545,46 @@
     font-size: 1.05rem;
   }
 
+  /* Reemplaza el SVG generado server-side que tenía esta barra antes de
+     integrar ECharts (ver historial de `renderProgressBar` en
+     core/report/charts.ts) — un div con `width` inline alcanza para una
+     barra plana de un solo valor, no justifica una librería de charting.
+     Verde fijo (`--qa-pass`): ver DESIGN.md, "La Regla del Cuarto Color" —
+     completar la sesión es conceptualmente lo mismo que aprobar. */
+  .qa-progress-track {
+    height: 14px;
+    border-radius: 999px;
+    background: var(--qa-border);
+    overflow: hidden;
+  }
+
+  .qa-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--qa-pass);
+  }
+
+  /* Mount point de la barra apilada "Estado por feature" (ver
+     partials/dashboard-charts-script.hbs, sección condicional a ≥3
+     features) — el alto real lo fija el script en línea, proporcional a
+     la cantidad de features; este mínimo es solo para que el layout no
+     salte de 0 a su alto final durante la carga. */
+  .qa-chart-feature-bars {
+    width: 100%;
+    min-height: 180px;
+  }
+
+  /* Mount point del sunburst jerárquico (ver misma nota de diseño arriba,
+     condicional a ≥3 features con ≥2 scenarios cada una) — cuadrado,
+     centrado, con un tope de ancho para que no domine toda la tarjeta en
+     pantallas grandes. */
+  .qa-chart-sunburst {
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 1 / 1;
+    margin: 0 auto;
+  }
+
   .qa-feature-list {
     list-style: none;
     margin: 0;
@@ -580,6 +631,38 @@
     flex-wrap: wrap;
   }
 
+  /* Micro-barra de progreso por feature (ver partials/feature-progress-bar.hbs)
+     — mismo lenguaje de color que el resto del sistema (hex fijo de
+     RESULT_COLORS, igual que los charts de ECharts: es un indicador visual
+     de proporción, no texto/borde propio, así que no necesita la variante
+     on-tint que exige DESIGN.md para esos dos casos). */
+  .qa-feature-row__bar {
+    margin: 10px 0 0;
+    display: flex;
+    height: 6px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--qa-border);
+  }
+
+  .qa-feature-row__bar-segment {
+    display: block;
+    height: 100%;
+  }
+
+  .qa-feature-row__bar-segment--pass {
+    background: var(--qa-pass);
+  }
+  .qa-feature-row__bar-segment--fail {
+    background: var(--qa-fail);
+  }
+  .qa-feature-row__bar-segment--skip {
+    background: var(--qa-skip);
+  }
+  .qa-feature-row__bar-segment--pending {
+    background: var(--qa-pending);
+  }
+
   .qa-feature-row__meta {
     display: flex;
     align-items: center;
@@ -607,7 +690,9 @@
   }
 
   .qa-badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     padding: 4px 11px;
     border-radius: 999px;
     font-size: 0.74rem;
@@ -616,6 +701,13 @@
     letter-spacing: 0.04em;
     border: 1px solid transparent;
     white-space: nowrap;
+  }
+
+  /* Dentro del badge el ícono no hereda el `vertical-align: -2px` de
+     `.qa-icon` (pensado para contexto inline, no flex) — `align-items:
+     center` del badge ya lo centra verticalmente sin eso. */
+  .qa-badge .qa-icon {
+    vertical-align: baseline;
   }
 
   .qa-badge--pass {
@@ -652,17 +744,71 @@
     counter-reset: qa-step;
   }
 
+  /* `.qa-scenario-header`/`.qa-step-header` (ver feature-detail.hbs) son
+     `<button>` reales, no `<div>` — reset de los estilos default de botón
+     del navegador para que se sigan viendo como la fila flex de siempre,
+     ver partials/accordion-script.hbs para el comportamiento de disclosure
+     que habilita esto. */
+  .qa-scenario-header,
+  .qa-step-header {
+    width: 100%;
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+
+  /* `--qa-bg-elevated`, no `--qa-bg`: a diferencia de `.qa-feature-row`
+     (que vive DENTRO de un `.qa-card` ya elevado, así que resalta yendo
+     hacia el fondo base), estos headers viven directo sobre el fondo base
+     de la página — necesitan ir hacia el tono elevado para que el hover se
+     note. */
+  .qa-scenario-header:hover,
+  .qa-step-header:hover {
+    background: var(--qa-bg-elevated);
+  }
+
+  /* El chevron de disclosure es SIEMPRE el primer hijo directo del botón
+     (ver feature-detail.hbs) — el `>` alcanza para no afectar el ícono que
+     vive adentro de `{{> badge}}` (nieto, no hijo directo). Rota 90° al
+     abrir, mismo lenguaje que `.qa-back-link`/chevrons del resto del
+     reporte. */
+  .qa-scenario-header > .qa-icon,
+  .qa-step-header > .qa-icon {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .qa-scenario-header[aria-expanded='true'] > .qa-icon,
+  .qa-step-header[aria-expanded='true'] > .qa-icon {
+    transform: rotate(90deg);
+  }
+
   .qa-scenario-header {
     display: flex;
     align-items: baseline;
     gap: 12px;
     flex-wrap: wrap;
+    padding: 4px 8px;
     margin-bottom: 16px;
   }
 
   .qa-scenario-header h3 {
     margin: 0;
     font-size: 1.15rem;
+  }
+
+  /* Colapsable — ver `setOpen()` en accordion-script.hbs, que anima este
+     `max-height` entre `0` y `scrollHeight`. `overflow: hidden` es lo que
+     recorta el contenido mientras el alto todavía no llegó a su valor
+     final (o mientras va bajando a `0`). */
+  .qa-scenario-body {
+    overflow: hidden;
+    transition: max-height 0.25s ease;
   }
 
   .qa-tag {
@@ -690,6 +836,24 @@
     align-items: baseline;
     gap: 12px;
     flex-wrap: wrap;
+    padding: 4px 8px;
+  }
+
+  /* Colapsable — mismo mecanismo que `.qa-scenario-body`. Sin padding
+     propio: `.qa-step-notes`/`.qa-defect`/`.qa-evidence-grid` ya traen su
+     propio `margin-top`, así que agregar padding acá duplicaría el aire
+     entre el header del step y su contenido. */
+  .qa-step-body {
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+  }
+
+  /* Step sin notas/defecto/evidencia (ver feature-detail.hbs, mensaje de
+     respaldo) — mismo indentado que esos tres, para que no quede pegado al
+     margen izquierdo mientras todo lo demás en este step sí respeta esa
+     alineación bajo el texto. */
+  .qa-step-body__inner > .qa-empty {
+    margin: 8px 0 0 2.1em;
   }
 
   /* El número de step SÍ importa acá (a diferencia de un marcador 01/02/03

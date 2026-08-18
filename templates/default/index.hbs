@@ -18,7 +18,12 @@
         <h2 id="qa-dashboard-heading" class="visually-hidden">Resumen general</h2>
         <div class="qa-hero">
           <div class="qa-hero__stat">
-            <p class="qa-hero__number">{{summary.passRatePercent}}<span>%</span></p>
+            <div
+              id="qa-chart-gauge"
+              class="qa-hero__gauge"
+              role="img"
+              aria-label="Tasa de aprobación: {{summary.passRatePercent}}%"
+            ></div>
             <p class="qa-hero__caption">
               aprobado sobre {{summary.total}} scenario{{pluralize summary.total}} ejecutados
             </p>
@@ -26,7 +31,14 @@
               <a class="qa-jump-to-failure" href="{{basePath}}{{firstFailureHref}}">{{> icon-alert}} Ver primer fallo</a>
             {{/if}}
           </div>
-          <div class="qa-hero__chart">{{{dashboard.distributionDonutSvg}}}</div>
+          <div class="qa-hero__chart">
+            <div
+              id="qa-chart-doughnut"
+              class="qa-hero__doughnut"
+              role="img"
+              aria-label="Distribución de resultados sobre {{summary.total}} scenario{{pluralize summary.total}}"
+            ></div>
+          </div>
           <div class="qa-hero__side">
             {{> legend summary=summary}}
             <p class="qa-hint">Pendiente: todavía sin ejecutar. Omitido: se decidió no ejecutar.</p>
@@ -35,11 +47,28 @@
                 <span>Progreso de la sesión</span>
                 <strong>{{summary.completionPercent}}%</strong>
               </div>
-              {{{dashboard.progressBarSvg}}}
+              <div
+                class="qa-progress-track"
+                role="img"
+                aria-label="Progreso general: {{summary.completionPercent}}% completado."
+              >
+                <div class="qa-progress-fill" style="width: {{summary.completionPercent}}%"></div>
+              </div>
             </div>
           </div>
         </div>
       </section>
+
+      {{#if dashboard.showFeatureBars}}
+        <section class="qa-card" aria-labelledby="qa-feature-bars-heading">
+          <h2 id="qa-feature-bars-heading" class="qa-section-heading">Estado por feature</h2>
+          <p class="qa-hint">
+            Cada barra suma los scenarios de esa feature por resultado — las más problemáticas
+            aparecen primero.
+          </p>
+          <div id="qa-chart-feature-bars" class="qa-chart-feature-bars" role="img" aria-label="Estado por feature, ordenado de menor a mayor tasa de aprobación"></div>
+        </section>
+      {{/if}}
 
       <section class="qa-card" aria-labelledby="qa-features-heading">
         <h2 id="qa-features-heading" class="qa-section-heading">Features</h2>
@@ -58,8 +87,12 @@
                         {{#each tags}}<span class="qa-tag">#{{this}}</span>{{/each}}
                       </p>
                     {{/if}}
+                    {{> feature-progress-bar summary=summary}}
                   </div>
-                  <div class="qa-feature-row__meta">
+                  <div
+                    class="qa-feature-row__meta"
+                    title="{{summary.pass}} aprobados, {{summary.fail}} fallidos, {{summary.skip}} omitidos, {{summary.pending}} pendientes"
+                  >
                     <span class="qa-feature-row__count">{{summary.pass}}/{{summary.total}} scenarios</span>
                     {{> badge}}
                     <span class="qa-feature-row__percent">{{summary.passRatePercent}}%</span>
@@ -73,7 +106,22 @@
           <p class="qa-empty">No hay features seleccionadas en esta sesión.</p>
         {{/if}}
       </section>
+
+      {{#if dashboard.showSunburst}}
+        <section class="qa-card" aria-labelledby="qa-sunburst-heading">
+          <h2 id="qa-sunburst-heading" class="qa-section-heading">Estructura del plan de pruebas</h2>
+          <p class="qa-hint">
+            De adentro hacia afuera: feature → scenario → step. Coloreado por resultado — hacé clic
+            en un anillo para ver el detalle de esa feature/scenario.
+          </p>
+          <div id="qa-chart-sunburst" class="qa-chart-sunburst" role="img" aria-label="Jerarquía de features, scenarios y steps, coloreada por resultado"></div>
+        </section>
+      {{/if}}
     </main>
+
+    {{> dashboard-data}}
+    <script src="{{basePath}}assets/echarts.custom.min.js"></script>
+    {{> dashboard-charts-script}}
     {{> theme-toggle-script}}
   </body>
 </html>

@@ -166,16 +166,69 @@ export interface BrandingInput {
   ctaColor?: string | null;
 }
 
+/** Una barra de la barra apilada horizontal "Estado por feature" del dashboard (ver `core/report/charts.ts`, `buildFeatureBars`). */
+export interface FeatureBarData {
+  name: string;
+  /** Ruta relativa a la raíz de `outputDir` — mismo valor que `FeatureReportView.detailPath`, para poder linkear desde el tooltip/click del chart. */
+  detailPath: string;
+  pass: number;
+  fail: number;
+  skip: number;
+  pending: number;
+  total: number;
+  passRatePercent: number;
+}
+
+/** Un step, como hoja del anillo exterior del sunburst (ver `buildSunburstData`). */
+export interface SunburstStepNode {
+  /** `"{keyword}: {texto}"`, truncado — solo para el label/tooltip del chart, nunca el texto completo del step (eso vive en la página de detalle). */
+  name: string;
+  result: StepResult;
+  /** Si el step tiene evidencia adjunta — el sunburst la señala en el tooltip, no en el color (el color ya está ocupado por `result`). */
+  hasEvidence: boolean;
+}
+
+/** Un scenario, como anillo medio del sunburst — sus `children` son sus steps. */
+export interface SunburstScenarioNode {
+  name: string;
+  result: StepResult;
+  children: SunburstStepNode[];
+}
+
+/** Una feature, como anillo interior del sunburst — sus `children` son sus scenarios. */
+export interface SunburstFeatureNode {
+  name: string;
+  result: StepResult;
+  children: SunburstScenarioNode[];
+}
+
 /**
- * Gráficos del dashboard, ya renderizados a SVG (ver `core/report/charts.ts`).
- * Son markup crudo (`<svg>...</svg>`) — el template debe insertarlos SIN
- * escapar (en Handlebars, `{{{ }}}` en vez de `{{ }}`), nunca como texto.
+ * Datos que el dashboard necesita para renderizar sus 4 charts de ECharts
+ * (ver `core/report/charts.ts` para cómo se construyen, y el script inline
+ * del template `index.hbs` para cómo se consumen client-side). A diferencia
+ * de la generación anterior (SVG renderizado server-side, ver historial de
+ * `DashboardCharts`), esto es JSON plano — el chart en sí se construye en
+ * el browser con la librería ya cargada (`assets/echarts.custom.min.js`).
+ *
+ * `featureBars`/`sunburst` vienen SIEMPRE poblados con los datos completos;
+ * es el TEMPLATE quien decide si renderizar esas secciones, usando
+ * `showFeatureBars`/`showSunburst` (ver Named Rules de umbral en
+ * `buildReportData`) — mismo criterio que el resto del sistema: la lógica
+ * de negocio vive en TypeScript, no en un helper de Handlebars nuevo.
  */
-export interface DashboardCharts {
-  /** Donut de distribución pass/fail/skip/pending de TODA la sesión. */
-  distributionDonutSvg: string;
-  /** Barra de progreso de `summary.completionPercent`. */
-  progressBarSvg: string;
+export interface DashboardChartData {
+  /** Para el gauge del hero — igual a `summary.passRatePercent`, repetido acá para que el JSON de charts sea autosuficiente sin tener que cruzarlo con `summary` desde el script inline. */
+  passRatePercent: number;
+  /** Para el doughnut del hero. */
+  distribution: ResultCounts;
+  /** Para la barra apilada "Estado por feature" — ordenada por `passRatePercent` ascendente (los más problemáticos primero). */
+  featureBars: FeatureBarData[];
+  /** `true` si hay ≥3 features — por debajo de eso, comparar features aporta poco (ver spec). */
+  showFeatureBars: boolean;
+  /** Para el sunburst jerárquico feature→scenario→step. */
+  sunburst: SunburstFeatureNode[];
+  /** `true` si hay ≥3 features Y todas tienen ≥2 scenarios — por debajo de eso, la jerarquía es ruido visual (ver spec). */
+  showSunburst: boolean;
 }
 
 /**
@@ -198,7 +251,17 @@ export interface ReportData {
   project: ProjectMeta;
   /** Resumen agregado de TODA la sesión (todas las features seleccionadas). */
   summary: ResultSummary;
-  dashboard: DashboardCharts;
+  dashboard: DashboardChartData;
+  /**
+   * `RESULT_COLORS`/`RESULT_LABELS` (`core/report/charts.ts`), repetidos acá
+   * para que el script inline de `index.hbs` que construye los 4 charts de
+   * ECharts los lea del mismo JSON que el resto de `dashboard`, sin
+   * hardcodear una segunda copia de los hex/labels en el `<script>` del
+   * template — mismo criterio de fuente única que ya exige el JSDoc de
+   * `RESULT_COLORS`.
+   */
+  resultColors: Readonly<Record<StepResult, string>>;
+  resultLabels: Readonly<Record<StepResult, string>>;
   features: FeatureReportView[];
   /**
    * Ruta relativa a la raíz de `outputDir` (combina `detailPath` del
@@ -262,11 +325,10 @@ export type ReportTemplateName = (typeof REQUIRED_REPORT_TEMPLATES)[number];
  *    - `data.project.projectName`, `data.project.generatedAt` (metadata del
  *      encabezado).
  *    - `data.summary.total/pass/fail/skip/pending/passRatePercent/completionPercent`
- *      (resumen global).
- *    - `data.dashboard.distributionDonutSvg` y `data.dashboard.progressBarSvg`
- *      — son markup SVG crudo: el template debe insertarlos SIN escapar
- *      (`{{{ }}}` en Handlebars) o el HTML del reporte mostrará las
- *      etiquetas `<svg>` como texto en vez de renderizarlas.
+ *      (resumen global). `data.dashboard` (charts de ECharts, ver
+ *      `DashboardChartData`) es opcional para este mínimo: un template
+ *      custom puede ignorarlo por completo y seguir siendo un reporte
+ *      válido, solo sin los 4 gráficos del dashboard.
  *    - `data.features` (array): por cada elemento, como mínimo `.name`,
  *      `.result`, `.summary.passRatePercent` y `.detailPath` (para el link
  *      a la vista de detalle — debe combinarse con `data.basePath` como

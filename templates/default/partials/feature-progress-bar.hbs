@@ -1,0 +1,26 @@
+{{!--
+  Micro-barra de progreso apilada (CSS puro, sin ECharts — es un elemento
+  repetido por fila, no un chart interactivo) debajo del nombre de cada
+  feature en la lista del dashboard: el cliente ve de un vistazo qué
+  proporción de esa feature es roja/ámbar sin tener que entrar al detalle.
+  Recibe `summary` (`ResultSummary`). `aria-hidden`: decorativa — la misma
+  info ya es texto real en `.qa-feature-row__percent` y en el `title`
+  enriquecido de `.qa-feature-row__meta` (ver index.hbs), nunca depende
+  solo de esta barra.
+--}}
+{{#if summary.total}}
+  <div class="qa-feature-row__bar" aria-hidden="true">
+    {{#if summary.pass}}
+      <span class="qa-feature-row__bar-segment qa-feature-row__bar-segment--pass" style="width: {{percentOf summary.pass summary.total}}%"></span>
+    {{/if}}
+    {{#if summary.fail}}
+      <span class="qa-feature-row__bar-segment qa-feature-row__bar-segment--fail" style="width: {{percentOf summary.fail summary.total}}%"></span>
+    {{/if}}
+    {{#if summary.skip}}
+      <span class="qa-feature-row__bar-segment qa-feature-row__bar-segment--skip" style="width: {{percentOf summary.skip summary.total}}%"></span>
+    {{/if}}
+    {{#if summary.pending}}
+      <span class="qa-feature-row__bar-segment qa-feature-row__bar-segment--pending" style="width: {{percentOf summary.pending summary.total}}%"></span>
+    {{/if}}
+  </div>
+{{/if}}

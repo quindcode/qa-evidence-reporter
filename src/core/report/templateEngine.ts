@@ -120,11 +120,47 @@ function registerHelpers(handlebars: typeof Handlebars): void {
     total === 0 ? 0 : Math.round((value / total) * 100),
   );
 
+  // `true` si el acordeón de este scenario debe empezar ABIERTO (ver
+  // partials/feature-detail.hbs + accordion-script.hbs): siempre que el
+  // scenario falló, o si es el primero de la feature Y NINGÚN scenario de
+  // esa feature falló (para que la página nunca cargue con todo colapsado).
+  // Calculado server-side (no en el script inline) para que el HTML ya
+  // nazca con el `max-height`/`aria-expanded` correctos — sin esto, el
+  // script tendría que corregir el estado recién al final de `<body>`,
+  // mostrando un flash del contenido completamente expandido mientras tanto.
+  handlebars.registerHelper(
+    'scenarioDefaultOpen',
+    (scenarioResult: StepResult, featureResult: StepResult, isFirst: boolean) =>
+      scenarioResult === 'fail' || (isFirst && featureResult !== 'fail'),
+  );
+
+  // Serializa `value` a JSON para embeberlo en un `<script type="application/json">`
+  // (ver `partials/dashboard-data.hbs`) — usado con `{{{ }}}` (SafeString,
+  // sin doble-escapar) porque el resultado YA es JSON válido, nunca HTML.
+  // Escapa `<`/`>`/`&` a sus secuencias `\u00XX` (no a entidades HTML,  que
+  // romperían el JSON): sin esto, un nombre de feature/scenario que
+  // contenga literalmente `</script>` cerraría el tag antes de tiempo y
+  // rompería el resto de la página — los nombres vienen de archivos
+  // `.feature` reales, no de un formulario, pero nunca se asume que un
+  // string arbitrario es seguro de insertar crudo dentro de un `<script>`.
+  handlebars.registerHelper(
+    'json',
+    (value: unknown) => new handlebars.SafeString(safeJsonStringify(value)),
+  );
+
   // Formato de fecha fijo (`DD/MM/AAAA HH:mm`, hora local de quien abre el
   // reporte) en vez de `Intl.DateTimeFormat`/`toLocaleString`: evita que el
   // formato del reporte varíe según el locale del sistema donde corrió
   // `generate()` (que no es necesariamente el mismo que el de quien lo lee).
   handlebars.registerHelper('formatDate', (iso: string) => formatDate(iso));
+}
+
+/** Ver JSDoc del helper `json` — mismo criterio de escape que usan frameworks como Next.js/Rails para JSON embebido en `<script>`. */
+function safeJsonStringify(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
 }
 
 function formatDate(iso: string): string {

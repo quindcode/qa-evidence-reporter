@@ -1,150 +1,197 @@
-import { DOMParser } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 
-import type { ResultCounts } from '../types/report.js';
-import { DONUT_SLICE_GAP_PX, RESULT_COLORS, renderDonutChart, renderProgressBar } from './charts.js';
+import type { FeatureReportView, ScenarioReportView, StepReportView } from '../types/report.js';
+import type { StepResult } from '../types/session.js';
+import {
+  RESULT_COLORS,
+  RESULT_LABELS,
+  RESULT_ORDER,
+  buildFeatureBars,
+  buildSunburstData,
+  shouldShowFeatureBars,
+  shouldShowSunburst,
+} from './charts.js';
 
-/** Parsea `svg` como XML y lanza si no es "well-formed" (ver investigación en el propio test file: `@xmldom/xmldom` lanza en fatalError por defecto, p. ej. tags sin cerrar). */
-function parseSvg(svg: string): Document {
-  return new DOMParser().parseFromString(svg, 'image/svg+xml');
+function step(result: StepResult, hasEvidence = false): StepReportView {
+  return {
+    id: `st-${Math.random()}`,
+    keyword: 'Given',
+    text: 'un paso de prueba',
+    fromBackground: false,
+    result,
+    evidence: hasEvidence ? [{ id: 'ev-1', originalFilename: 'foto.png', kind: 'image', path: 'x' }] : [],
+  };
 }
 
-function countsOf(partial: Partial<ResultCounts>): ResultCounts {
-  return { pass: 0, fail: 0, skip: 0, pending: 0, ...partial };
+function scenario(name: string, result: StepResult, steps: StepReportView[]): ScenarioReportView {
+  return { id: `s-${name}`, name, tags: [], result, steps };
 }
 
-describe('renderDonutChart', () => {
-  it('produce XML válido (parseable)', () => {
-    const svg = renderDonutChart(countsOf({ pass: 2, fail: 1, skip: 1 }));
-    expect(() => parseSvg(svg)).not.toThrow();
+function feature(
+  name: string,
+  result: StepResult,
+  scenarios: ScenarioReportView[],
+  summary: FeatureReportView['summary'],
+): FeatureReportView {
+  return {
+    id: `f-${name}`,
+    slug: `f-${name}`,
+    name,
+    tags: [],
+    result,
+    summary,
+    scenarios,
+    detailPath: `features/f-${name}.html`,
+  };
+}
 
-    const doc = parseSvg(svg);
-    expect(doc.documentElement.tagName).toBe('svg');
-  });
+function summaryOf(pass: number, fail: number, skip: number, pending: number) {
+  const total = pass + fail + skip + pending;
+  return {
+    pass,
+    fail,
+    skip,
+    pending,
+    total,
+    passRatePercent: total === 0 ? 0 : Math.round((pass / total) * 100),
+    completionPercent: total === 0 ? 0 : Math.round(((pass + fail + skip) / total) * 100),
+  };
+}
 
-  it('produce XML válido incluso sin datos (total === 0)', () => {
-    const svg = renderDonutChart(countsOf({}));
-    expect(() => parseSvg(svg)).not.toThrow();
-    // Sin porciones: solo el aro de fondo, ningún <circle data-result>.
-    const doc = parseSvg(svg);
-    const circles = Array.from(doc.getElementsByTagName('circle'));
-    expect(circles.every((circle) => circle.getAttribute('data-result') === null)).toBe(true);
-  });
-
-  it('2 pass de 4 total → la porción "pass" ocupa el 50% del donut (menos el hueco entre porciones)', () => {
-    const svg = renderDonutChart(countsOf({ pass: 2, fail: 1, skip: 1 }));
-    const doc = parseSvg(svg);
-
-    const passSlice = findSliceByResult(doc, 'pass');
-    expect(passSlice.getAttribute('data-percent')).toBe('50');
-    expect(passSlice.getAttribute('data-value')).toBe('2');
-
-    // El largo del segmento "pintado" del stroke-dasharray debe ser la mitad
-    // de la circunferencia total, menos el hueco fijo entre porciones (ver
-    // DONUT_SLICE_GAP_PX) que separa esta porción de sus vecinas — ya no es
-    // exactamente igual al resto (`painted === rest`) porque ese resto ahora
-    // incluye el hueco.
-    const size = 220;
-    const strokeWidth = 32;
-    const radius = (size - strokeWidth) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const [painted, rest] = parseDasharray(passSlice);
-    expect(painted).toBeCloseTo(circumference / 2 - DONUT_SLICE_GAP_PX, 1);
-    expect(painted + rest).toBeCloseTo(circumference, 1);
-  });
-
-  it('cada categoría con valor > 0 tiene su propio <circle> con el color documentado en RESULT_COLORS', () => {
-    const svg = renderDonutChart(countsOf({ pass: 1, fail: 1, skip: 1, pending: 1 }));
-    const doc = parseSvg(svg);
-
-    for (const result of ['pass', 'fail', 'skip', 'pending'] as const) {
-      const slice = findSliceByResult(doc, result);
-      expect(slice.getAttribute('stroke')).toBe(RESULT_COLORS[result]);
-      expect(slice.getAttribute('data-percent')).toBe('25');
+describe('paleta y etiquetas', () => {
+  it('RESULT_COLORS/RESULT_LABELS/RESULT_ORDER cubren exactamente las 4 categorías de StepResult', () => {
+    const categories: StepResult[] = ['pass', 'fail', 'skip', 'pending'];
+    for (const category of categories) {
+      expect(RESULT_COLORS[category]).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(RESULT_LABELS[category]).toBeTruthy();
     }
-  });
-
-  it('no genera un <circle> para una categoría en 0', () => {
-    const svg = renderDonutChart(countsOf({ pass: 4 }));
-    const doc = parseSvg(svg);
-    expect(findSliceByResultOrNull(doc, 'fail')).toBeNull();
-    expect(findSliceByResultOrNull(doc, 'skip')).toBeNull();
-    expect(findSliceByResultOrNull(doc, 'pending')).toBeNull();
-  });
-
-  it('es accesible: role="img", aria-label con el resumen en texto, y <title>', () => {
-    const svg = renderDonutChart(countsOf({ pass: 3, fail: 1 }));
-    const doc = parseSvg(svg);
-    const root = doc.documentElement;
-
-    expect(root.getAttribute('role')).toBe('img');
-    expect(root.getAttribute('aria-label')).toMatch(/Aprobado/);
-    expect(root.getAttribute('aria-label')).toMatch(/Fallido/);
-
-    const titles = doc.getElementsByTagName('title');
-    expect(titles.length).toBeGreaterThan(0);
-    expect(titles.item(0)?.textContent).toBe(root.getAttribute('aria-label'));
-  });
-
-  it('respeta el tamaño/grosor pasados por options', () => {
-    const svg = renderDonutChart(countsOf({ pass: 1 }), { size: 100, strokeWidth: 10 });
-    const doc = parseSvg(svg);
-    expect(doc.documentElement.getAttribute('width')).toBe('100');
-    expect(doc.documentElement.getAttribute('height')).toBe('100');
+    expect(RESULT_ORDER).toEqual(categories);
   });
 });
 
-describe('renderProgressBar', () => {
-  it('produce XML válido (parseable)', () => {
-    const svg = renderProgressBar(42);
-    expect(() => parseSvg(svg)).not.toThrow();
+describe('shouldShowFeatureBars', () => {
+  it('false con menos de 3 features', () => {
+    const features = [
+      feature('A', 'pass', [], summaryOf(1, 0, 0, 0)),
+      feature('B', 'pass', [], summaryOf(1, 0, 0, 0)),
+    ];
+    expect(shouldShowFeatureBars(features)).toBe(false);
   });
 
-  it('el rect de relleno ocupa exactamente el % pasado del ancho total', () => {
-    const width = 500;
-    const svg = renderProgressBar(30, { width });
-    const doc = parseSvg(svg);
-    const fill = findRectByRole(doc, 'fill');
-    expect(Number(fill.getAttribute('width'))).toBeCloseTo(width * 0.3, 1);
-    expect(fill.getAttribute('data-percent')).toBe('30');
-  });
-
-  it('clampea valores fuera de [0, 100] en vez de desbordar el viewBox', () => {
-    const width = 300;
-    const over = parseSvg(renderProgressBar(150, { width }));
-    expect(Number(findRectByRole(over, 'fill').getAttribute('width'))).toBeCloseTo(width, 1);
-
-    const under = parseSvg(renderProgressBar(-20, { width }));
-    expect(Number(findRectByRole(under, 'fill').getAttribute('width'))).toBeCloseTo(0, 1);
-  });
-
-  it('es accesible: role="img" y aria-label con el porcentaje en texto', () => {
-    const doc = parseSvg(renderProgressBar(75));
-    expect(doc.documentElement.getAttribute('role')).toBe('img');
-    expect(doc.documentElement.getAttribute('aria-label')).toMatch(/75%/);
+  it('true con 3 o más features', () => {
+    const features = [
+      feature('A', 'pass', [], summaryOf(1, 0, 0, 0)),
+      feature('B', 'pass', [], summaryOf(1, 0, 0, 0)),
+      feature('C', 'pass', [], summaryOf(1, 0, 0, 0)),
+    ];
+    expect(shouldShowFeatureBars(features)).toBe(true);
   });
 });
 
-function findSliceByResult(doc: Document, result: string): Element {
-  const slice = findSliceByResultOrNull(doc, result);
-  if (!slice) throw new Error(`no se encontró un <circle data-result="${result}">`);
-  return slice;
-}
+describe('buildFeatureBars', () => {
+  it('mapea nombre/detailPath/conteos/passRatePercent de cada feature, ordenadas ascendente por passRatePercent', () => {
+    const features = [
+      feature('Checkout', 'fail', [], summaryOf(1, 1, 0, 0)), // 50%
+      feature('Login', 'pass', [], summaryOf(2, 0, 0, 0)), // 100%
+      feature('Reportes', 'fail', [], summaryOf(0, 1, 0, 0)), // 0%
+    ];
 
-function findSliceByResultOrNull(doc: Document, result: string): Element | null {
-  const circles = Array.from(doc.getElementsByTagName('circle'));
-  return circles.find((circle) => circle.getAttribute('data-result') === result) ?? null;
-}
+    const bars = buildFeatureBars(features);
 
-function findRectByRole(doc: Document, role: string): Element {
-  const rects = Array.from(doc.getElementsByTagName('rect'));
-  const match = rects.find((rect) => rect.getAttribute('data-role') === role);
-  if (!match) throw new Error(`no se encontró un <rect data-role="${role}">`);
-  return match;
-}
+    expect(bars.map((bar) => bar.name)).toEqual(['Reportes', 'Checkout', 'Login']);
+    expect(bars[0]).toEqual({
+      name: 'Reportes',
+      detailPath: 'features/f-Reportes.html',
+      pass: 0,
+      fail: 1,
+      skip: 0,
+      pending: 0,
+      total: 1,
+      passRatePercent: 0,
+    });
+  });
 
-function parseDasharray(element: Element): [number, number] {
-  const raw = element.getAttribute('stroke-dasharray') ?? '';
-  const [painted, rest] = raw.split(/\s+/).map(Number);
-  return [painted ?? 0, rest ?? 0];
-}
+  it('con features vacías, devuelve un array vacío', () => {
+    expect(buildFeatureBars([])).toEqual([]);
+  });
+});
+
+describe('shouldShowSunburst', () => {
+  it('false con menos de 3 features', () => {
+    const features = [
+      feature('A', 'pass', [scenario('s1', 'pass', []), scenario('s2', 'pass', [])], summaryOf(2, 0, 0, 0)),
+      feature('B', 'pass', [scenario('s1', 'pass', []), scenario('s2', 'pass', [])], summaryOf(2, 0, 0, 0)),
+    ];
+    expect(shouldShowSunburst(features)).toBe(false);
+  });
+
+  it('false si alguna de las ≥3 features tiene menos de 2 scenarios', () => {
+    const features = [
+      feature('A', 'pass', [scenario('s1', 'pass', []), scenario('s2', 'pass', [])], summaryOf(2, 0, 0, 0)),
+      feature('B', 'pass', [scenario('s1', 'pass', []), scenario('s2', 'pass', [])], summaryOf(2, 0, 0, 0)),
+      feature('C', 'pass', [scenario('s1', 'pass', [])], summaryOf(1, 0, 0, 0)), // solo 1 scenario
+    ];
+    expect(shouldShowSunburst(features)).toBe(false);
+  });
+
+  it('true con ≥3 features, todas con ≥2 scenarios', () => {
+    const twoScenarios = [scenario('s1', 'pass', []), scenario('s2', 'pass', [])];
+    const features = [
+      feature('A', 'pass', twoScenarios, summaryOf(2, 0, 0, 0)),
+      feature('B', 'pass', twoScenarios, summaryOf(2, 0, 0, 0)),
+      feature('C', 'pass', twoScenarios, summaryOf(2, 0, 0, 0)),
+    ];
+    expect(shouldShowSunburst(features)).toBe(true);
+  });
+});
+
+describe('buildSunburstData', () => {
+  it('produce un árbol feature→scenario→step con result y hasEvidence, nunca notas/defecto/evidencia completa', () => {
+    const features = [
+      feature(
+        'Login',
+        'fail',
+        [
+          scenario('Login OK', 'pass', [step('pass'), step('pass', true)]),
+          scenario('Login fallido', 'fail', [step('fail')]),
+        ],
+        summaryOf(1, 1, 0, 0),
+      ),
+    ];
+
+    const tree = buildSunburstData(features);
+
+    expect(tree).toHaveLength(1);
+    expect(tree[0].name).toBe('Login');
+    expect(tree[0].result).toBe('fail');
+    expect(tree[0].children).toHaveLength(2);
+
+    const [okScenario, failScenario] = tree[0].children;
+    expect(okScenario.name).toBe('Login OK');
+    expect(okScenario.result).toBe('pass');
+    expect(okScenario.children).toHaveLength(2);
+    expect(okScenario.children[0]).toEqual({ name: 'Given: un paso de prueba', result: 'pass', hasEvidence: false });
+    expect(okScenario.children[1]).toEqual({ name: 'Given: un paso de prueba', result: 'pass', hasEvidence: true });
+
+    expect(failScenario.children[0].result).toBe('fail');
+  });
+
+  it('trunca el nombre de un step largo con elipsis en vez de repetir el texto completo', () => {
+    const longText = 'a'.repeat(60);
+    const features = [
+      feature('F', 'pass', [scenario('S', 'pass', [step('pass')])], summaryOf(1, 0, 0, 0)),
+    ];
+    features[0].scenarios[0].steps[0].text = longText;
+
+    const tree = buildSunburstData(features);
+    const stepName = tree[0].children[0].children[0].name;
+
+    expect(stepName.length).toBeLessThanOrEqual(40);
+    expect(stepName.endsWith('…')).toBe(true);
+    expect(stepName).not.toContain(longText);
+  });
+
+  it('con features vacías, devuelve un array vacío', () => {
+    expect(buildSunburstData([])).toEqual([]);
+  });
+});

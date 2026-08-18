@@ -29,7 +29,14 @@ import {
   type StepExecution,
   type StepResult,
 } from '../types/session.js';
-import { renderDonutChart, renderProgressBar } from './charts.js';
+import {
+  RESULT_COLORS,
+  RESULT_LABELS,
+  buildFeatureBars,
+  buildSunburstData,
+  shouldShowFeatureBars,
+  shouldShowSunburst,
+} from './charts.js';
 import { createHandlebarsTemplateEngine } from './templateEngine.js';
 
 /** Configuración fija de `createReportGenerator` (no cambia entre llamadas a `generate()`). */
@@ -422,23 +429,20 @@ async function buildReportData(
     },
     summary,
     dashboard: {
-      // Tamaño reducido respecto al default (220px): en el rediseño del
-      // dashboard el protagonista es el % en texto grande (`.qa-hero__number`,
-      // ver templates/default/index.hbs) — el donut queda como visual de
-      // acompañamiento, no como el elemento principal. `showCenterLabel`
-      // solo se activa sin datos ("Sin datos" no repite nada); con datos
-      // reales el hero grande de al lado ya es ese mismo número, así que el
-      // centro del anillo se deja limpio en vez de duplicarlo.
-      distributionDonutSvg: renderDonutChart(summary, {
-        size: 200,
-        strokeWidth: 30,
-        showCenterLabel: summary.total === 0,
-      }),
-      // Altura reducida respecto al default (28px): sin texto embebido (ver
-      // JSDoc de `renderProgressBar`), un track más fino lee como un
-      // indicador de progreso, no como una segunda etiqueta de porcentaje.
-      progressBarSvg: renderProgressBar(summary.completionPercent, { height: 14 }),
+      passRatePercent: summary.passRatePercent,
+      distribution: {
+        pass: summary.pass,
+        fail: summary.fail,
+        skip: summary.skip,
+        pending: summary.pending,
+      },
+      featureBars: buildFeatureBars(features),
+      showFeatureBars: shouldShowFeatureBars(features),
+      sunburst: buildSunburstData(features),
+      showSunburst: shouldShowSunburst(features),
     },
+    resultColors: RESULT_COLORS,
+    resultLabels: RESULT_LABELS,
     features,
     firstFailureHref: buildFirstFailureHref(features),
   };

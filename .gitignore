@@ -4,6 +4,11 @@ coverage/
 *.log
 .qa-evidence-reporter/
 
+# Bundle custom de ECharts para el reporte (ver templates/default/vite.echarts.config.ts)
+# — artefacto reproducible desde echarts.entry.js, se regenera con
+# "npm run build:echarts" (parte de "npm run build"), nunca se edita a mano.
+templates/default/assets/echarts.custom.min.js
+
 # Artefactos generados al probar sample-project localmente (evidencia/reporte
 # de sesiones de prueba) — sample-project debe quedar "limpio" en el repo
 # para que cada quien lo pruebe desde cero.

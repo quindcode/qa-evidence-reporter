@@ -1,1 +1,13 @@
-<span class="qa-badge {{resultBadgeClass result}}">{{resultLabel result}}</span>
+{{!--
+  Badge de resultado + ícono de trazo único a juego (ver DESIGN.md, Icons:
+  "cero emoji, cero entidades Unicode paradas como ícono") — nunca depende
+  solo del color para distinguir la categoría, ver Do's/Don'ts.
+--}}
+<span class="qa-badge {{resultBadgeClass result}}">
+  {{#if (eq result "pass")}}{{> icon-check}}
+  {{else if (eq result "fail")}}{{> icon-x}}
+  {{else if (eq result "skip")}}{{> icon-minus}}
+  {{else}}{{> icon-clock}}
+  {{/if}}
+  {{resultLabel result}}
+</span>

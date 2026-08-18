@@ -23,8 +23,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc && npm run build:ui",
+    "build": "tsc && npm run build:ui && npm run build:echarts",
     "build:ui": "vite build --config src/ui/vite.config.ts",
+    "build:echarts": "vite build --config templates/default/vite.echarts.config.ts",
     "dev:ui": "vite --config src/ui/vite.config.ts",
     "test": "vitest run",
     "lint": "eslint .",
@@ -35,6 +36,7 @@
     "@cucumber/messages": "^24.1.0",
     "archiver": "^8.0.0",
     "commander": "^15.0.0",
+    "echarts": "^6.1.0",
     "express": "^5.2.1",
     "handlebars": "^4.7.9",
     "jimp": "^1.6.1",
@@ -54,7 +56,6 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.10.0",
     "@types/supertest": "^7.2.1",
-    "@xmldom/xmldom": "^0.9.10",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "jsdom": "^30.0.1",

@@ -1,0 +1,11 @@
+{{!--
+  JSON que consume `dashboard-charts-script.hbs` para construir los 4
+  charts de ECharts. `type="application/json"` (no "text/javascript"): el
+  browser nunca lo ejecuta como script, solo queda disponible vía
+  `document.getElementById(...).textContent` — ver el helper `json`
+  (`core/report/templateEngine.ts`) para el escape que hace seguro
+  embeberlo dentro de un `<script>`.
+--}}
+<script type="application/json" id="qa-dashboard-data">{{{json dashboard}}}</script>
+<script type="application/json" id="qa-result-colors">{{{json resultColors}}}</script>
+<script type="application/json" id="qa-result-labels">{{{json resultLabels}}}</script>

@@ -1,12 +1,12 @@
-import type { ResultCounts } from '../types/report.js';
+import type { FeatureBarData, FeatureReportView, SunburstFeatureNode } from '../types/report.js';
 import type { StepResult } from '../types/session.js';
 
 /**
  * Paleta de colores del reporte — ÚNICO lugar del código donde se definen
- * estos valores hex (ver ARCHITECTURE.md, "Gráficos del reporte": SVG
- * server-side sin librería de charting). Cualquier otro módulo que necesite
- * pintar un resultado (helpers de Handlebars en `templateEngine.ts`, CSS de
- * los templates) debe importar/reflejar estos mismos valores en vez de
+ * estos valores hex (ver ARCHITECTURE.md, "Gráficos del reporte"). Cualquier
+ * otro módulo que necesite pintar un resultado (helpers de Handlebars en
+ * `templateEngine.ts`, CSS de los templates, los 4 charts de ECharts del
+ * dashboard) debe importar/reflejar estos mismos valores en vez de
  * hardcodear su propia copia — ver `RESULT_LABELS` más abajo, que sigue el
  * mismo criterio para las etiquetas en español.
  *
@@ -16,8 +16,17 @@ import type { StepResult } from '../types/session.js';
  * fondo blanco/gris claro — en ambos casos por encima o cerca del umbral
  * WCAG AA (contraste ≥ 4.5:1) para texto normal. Ningún consumidor debe
  * depender SOLO de estos colores para distinguir categorías: siempre van
- * acompañados de texto/etiqueta (ver JSDoc de `renderDonutChart` y la
- * leyenda textual en `templates/default/partials/legend.hbs`).
+ * acompañados de texto/etiqueta (ver la leyenda textual en
+ * `templates/default/partials/legend.hbs`).
+ *
+ * Nota de diseño (por qué el gauge/doughnut/barra/sunburst de ECharts usan
+ * este hex FIJO y no la variante "-on-tint" del CSS del reporte): DESIGN.md,
+ * "La Regla del Contraste en Oscuro", reserva el hex fijo para "el SVG del
+ * chart" — el requisito de contraste WCAG que motiva la variante on-tint
+ * aplica a TEXTO/BORDE sobre una superficie propia (badge, chip, riel), no
+ * al relleno de una serie de datos, que no tiene esa obligación de
+ * contraste y en cambio SÍ necesita calzar exacto entre light/dark para que
+ * "verde siempre es aprobado" no varíe con el tema.
  */
 export const RESULT_COLORS: Readonly<Record<StepResult, string>> = {
   pass: '#15803d',
@@ -34,193 +43,88 @@ export const RESULT_LABELS: Readonly<Record<StepResult, string>> = {
   pending: 'Pendiente',
 };
 
-/** Orden de dibujado/legend fijo, para que el resultado sea determinístico entre corridas (mismos conteos → mismo SVG byte a byte). */
-const RESULT_ORDER: readonly StepResult[] = ['pass', 'fail', 'skip', 'pending'];
+/** Orden de dibujado/leyenda fijo para cualquier chart que itere las 4 categorías — mismos conteos siempre producen el mismo orden visual entre corridas. */
+export const RESULT_ORDER: readonly StepResult[] = ['pass', 'fail', 'skip', 'pending'];
+
+/** Cantidad mínima de features para que la barra apilada "Estado por feature" aporte algo — con 1-2 features, comparar no dice mucho (ver spec del dashboard). */
+const MIN_FEATURES_FOR_BAR_CHART = 3;
+
+/** Mínimos para que el sunburst jerárquico aporte algo en vez de ser ruido visual: al menos esta cantidad de features, y CADA una con al menos `MIN_SCENARIOS_PER_FEATURE_FOR_SUNBURST` scenarios. */
+const MIN_FEATURES_FOR_SUNBURST = 3;
+const MIN_SCENARIOS_PER_FEATURE_FOR_SUNBURST = 2;
 
 /**
- * Espacio en blanco (en unidades del `viewBox`, independiente del tamaño)
- * entre porciones adyacentes del donut, combinado con `stroke-linecap="round"`
- * en cada porción — el anillo segmentado con extremos redondeados en vez de
- * porciones que se tocan a tope. Exportado para que `charts.test.ts` pueda
- * calcular la geometría esperada sin duplicar el número mágico.
+ * `true` si hay suficientes features para que la barra apilada "Estado por
+ * feature" del dashboard aporte algo — ver `MIN_FEATURES_FOR_BAR_CHART`.
+ * Función separada (no solo `features.length >= N` inline en
+ * `reportGenerator.ts`) para que el umbral tenga un solo nombre buscable y
+ * un test propio.
  */
-export const DONUT_SLICE_GAP_PX = 4;
-
-/** Color de la barra de progreso general. Reutiliza `RESULT_COLORS.pass` a propósito: "completado" es conceptualmente el mismo verde que "aprobado", y así no se introduce un quinto color sin documentar. */
-const PROGRESS_FILL_COLOR = RESULT_COLORS.pass;
-
-export interface DonutChartOptions {
-  /** Ancho/alto del `viewBox` cuadrado, en px. Default `220`. */
-  size?: number;
-  /** Grosor del anillo, en px. Default `32`. */
-  strokeWidth?: number;
-  /**
-   * Si se dibuja el `%` de aprobación en el centro del anillo. Default
-   * `true`. El dashboard (único caller hoy, ver `reportGenerator.ts`) lo
-   * pasa en `false` cuando ya hay datos — ese mismo número ya es el
-   * protagonista tipográfico del hero (`.qa-hero__number`) justo al lado, y
-   * repetirlo en el centro del anillo era puro ruido redundante, no una
-   * segunda pieza de información. Con `total === 0` el caller sigue
-   * pidiendo el label (`true`), porque ahí el centro no repite nada: es el
-   * único lugar que dice "Sin datos".
-   */
-  showCenterLabel?: boolean;
+export function shouldShowFeatureBars(features: readonly FeatureReportView[]): boolean {
+  return features.length >= MIN_FEATURES_FOR_BAR_CHART;
 }
 
-/**
- * Donut chart de distribución pass/fail/skip/pending, como string SVG
- * autocontenido (sin dependencias externas — ver ARCHITECTURE.md). Función
- * pura: mismo `counts`/`options` siempre produce el mismo string.
- *
- * Accesibilidad:
- * - `role="img"` + `aria-label` en la raíz con el resumen completo en texto
- *   (no solo "gráfico de torta").
- * - Un `<title>` (primer hijo del `<svg>`, y también uno por cada porción)
- *   para lectores de pantalla y tooltips nativos del navegador.
- * - Cada porción lleva `data-result`/`data-value`/`data-percent` — no son
- *   necesarios para renderizar, pero permiten identificar cada porción sin
- *   depender del color (tanto para tests como para cualquier herramienta de
- *   accesibilidad/automatización que inspeccione el markup).
- * - El texto central y el aro de fondo usan `fill`/`stroke="currentColor"`:
- *   como el SVG se inserta inline dentro del HTML del reporte (nunca como
- *   `<img>`), heredan el color de texto normal de la página y por lo tanto
- *   se adaptan automáticamente al tema claro/oscuro sin que `charts.ts`
- *   necesite conocer los colores del tema.
- * - El llamador (template) SIEMPRE debe agregar además una leyenda textual
- *   en HTML (ver contrato de `TemplateEngine`) — este SVG por sí solo no
- *   alcanza como única fuente de la distribución para quien no pueda
- *   percibir colores.
- *
- * Caso `total === 0` (sesión sin scenarios): se dibuja solo el aro de fondo
- * (sin porciones) y el centro muestra "Sin datos", en vez de dividir por
- * cero.
- *
- * Las porciones llevan un pequeño hueco (`DONUT_SLICE_GAP_PX`) entre sí y
- * `stroke-linecap="round"` — un anillo segmentado con extremos redondeados
- * en vez de porciones a tope, para que cada categoría se lea como una
- * pieza propia incluso antes de mirar el color.
- */
-export function renderDonutChart(counts: ResultCounts, options: DonutChartOptions = {}): string {
-  const size = options.size ?? 220;
-  const strokeWidth = options.strokeWidth ?? 32;
-  const showCenterLabel = options.showCenterLabel ?? true;
-  const radius = (size - strokeWidth) / 2;
-  const center = size / 2;
-  const circumference = 2 * Math.PI * radius;
-  const total = RESULT_ORDER.reduce((sum, key) => sum + counts[key], 0);
-
-  const ariaLabel =
-    total === 0
-      ? 'Distribución de resultados: todavía no hay scenarios ejecutados.'
-      : `Distribución de resultados sobre ${total} scenario${total === 1 ? '' : 's'}: ` +
-        RESULT_ORDER.map((key) => `${RESULT_LABELS[key]} ${percentOf(counts[key], total)}%`).join(
-          ', ',
-        ) +
-        '.';
-
-  let cumulativeFraction = 0;
-  const slices = RESULT_ORDER.filter((key) => counts[key] > 0)
-    .map((key) => {
-      const value = counts[key];
-      const fraction = value / total;
-      const dashLength = fraction * circumference;
-      const dashOffset = cumulativeFraction * circumference;
-      cumulativeFraction += fraction;
-      const visibleLength = Math.max(0, dashLength - DONUT_SLICE_GAP_PX);
-      const visibleOffset = dashOffset + DONUT_SLICE_GAP_PX / 2;
-
-      return (
-        `<circle cx="${center}" cy="${center}" r="${radius}" fill="none" ` +
-        `stroke="${RESULT_COLORS[key]}" stroke-width="${strokeWidth}" stroke-linecap="round" ` +
-        `stroke-dasharray="${round(visibleLength)} ${round(circumference - visibleLength)}" ` +
-        `stroke-dashoffset="${round(-visibleOffset)}" ` +
-        `data-result="${key}" data-value="${value}" data-percent="${percentOf(value, total)}">` +
-        `<title>${escapeXml(RESULT_LABELS[key])}: ${value} (${percentOf(value, total)}%)</title>` +
-        `</circle>`
-      );
-    })
-    .join('');
-
-  const centerLabel = total === 0 ? 'Sin datos' : `${percentOf(counts.pass, total)}%`;
-  const centerText = showCenterLabel
-    ? `<text x="${center}" y="${center}" text-anchor="middle" dominant-baseline="middle" font-size="${round(size * 0.16)}" font-weight="700" fill="currentColor">${escapeXml(centerLabel)}</text>`
-    : '';
-
+/** `true` si hay suficientes features (todas con suficientes scenarios) para que el sunburst aporte algo — ver `MIN_FEATURES_FOR_SUNBURST`/`MIN_SCENARIOS_PER_FEATURE_FOR_SUNBURST`. */
+export function shouldShowSunburst(features: readonly FeatureReportView[]): boolean {
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${escapeXml(ariaLabel)}">` +
-    `<title>${escapeXml(ariaLabel)}</title>` +
-    `<circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="currentColor" stroke-opacity="0.15" stroke-width="${strokeWidth}" data-role="track"></circle>` +
-    `<g transform="rotate(-90 ${center} ${center})">${slices}</g>` +
-    centerText +
-    `</svg>`
+    features.length >= MIN_FEATURES_FOR_SUNBURST &&
+    features.every((feature) => feature.scenarios.length >= MIN_SCENARIOS_PER_FEATURE_FOR_SUNBURST)
   );
 }
 
-export interface ProgressBarOptions {
-  /** Ancho del `viewBox`, en px. Default `480`. */
-  width?: number;
-  /** Alto del `viewBox`, en px. Default `28`. */
-  height?: number;
+/**
+ * Una barra por feature para el chart de barra apilada horizontal del
+ * dashboard ("Estado por feature") — conteos a nivel SCENARIO (mismo
+ * criterio que `ResultSummary` en todo el resto del reporte, ver
+ * `buildReportData` en `reportGenerator.ts`: contar steps sueltos inflaría
+ * el % de un feature cuyos scenarios individuales no pasaron completos).
+ *
+ * Ordenadas por `passRatePercent` ASCENDENTE — los features más
+ * problemáticos quedan primero, así quien lee el dashboard ve de arriba
+ * hacia abajo qué necesita atención antes que lo que ya está en verde (ver
+ * spec: "el cliente vea primero lo que necesita atención").
+ */
+export function buildFeatureBars(features: readonly FeatureReportView[]): FeatureBarData[] {
+  return features
+    .map((feature) => ({
+      name: feature.name,
+      detailPath: feature.detailPath,
+      pass: feature.summary.pass,
+      fail: feature.summary.fail,
+      skip: feature.summary.skip,
+      pending: feature.summary.pending,
+      total: feature.summary.total,
+      passRatePercent: feature.summary.passRatePercent,
+    }))
+    .sort((a, b) => a.passRatePercent - b.passRatePercent);
 }
+
+/** Longitud máxima (en caracteres) del label de un nodo hoja de step en el sunburst — el texto completo del step vive en la página de detalle, acá alcanza con identificarlo, no repetirlo entero. */
+const SUNBURST_STEP_NAME_MAX_LENGTH = 40;
 
 /**
- * Barra de progreso simple (% completado = scenarios que ya no están en
- * `'pending'`, ver `ResultSummary.completionPercent` en
- * `core/types/report.ts`), como string SVG autocontenido. Función pura,
- * mismas garantías de accesibilidad que `renderDonutChart` (`role="img"` +
- * `aria-label`, con el porcentaje en texto).
- *
- * Sin `<text>` visible dentro del SVG a propósito (a diferencia de una
- * versión anterior): el único caller (`index.hbs`, dashboard) ya muestra el
- * mismo porcentaje como texto real justo arriba de la barra
- * (`.qa-progress-label strong`) — duplicarlo adentro era ruido, y ese texto
- * embebido tampoco podía garantizar contraste consigo mismo: a color de
- * relleno fijo (blanco) sobre una barra que, en porcentajes bajos, deja la
- * mayor parte del ancho ocupada por el track claro/oscuro del tema, no por
- * el relleno. Retirar el texto retira también ese riesgo de contraste sin
- * perder el requisito de "el % siempre visible como texto, no solo como
- * longitud de barra" — ese requisito lo sigue cumpliendo el label externo.
- *
- * `percentComplete` se clampea a `[0, 100]` — un caller que pase un valor
- * fuera de rango (p. ej. por un bug de redondeo previo) nunca produce una
- * barra que se desborde del `viewBox`.
+ * Árbol feature→scenario→step para el sunburst jerárquico del dashboard.
+ * Nunca incluye notas, descripción de defecto, ni las evidencias en sí —
+ * solo lo mínimo para pintar el nodo (nombre corto, resultado) y señalar en
+ * el tooltip si ese step tiene evidencia adjunta (`hasEvidence`), sin
+ * duplicar el detalle completo que ya vive en la página de la feature.
  */
-export function renderProgressBar(
-  percentComplete: number,
-  options: ProgressBarOptions = {},
-): string {
-  const width = options.width ?? 480;
-  const height = options.height ?? 28;
-  const clamped = Math.min(100, Math.max(0, percentComplete));
-  const filledWidth = round((clamped / 100) * width);
-  const cornerRadius = height / 2;
-  const ariaLabel = `Progreso general: ${Math.round(clamped)}% completado.`;
-
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXml(ariaLabel)}">` +
-    `<title>${escapeXml(ariaLabel)}</title>` +
-    `<rect x="0" y="0" width="${width}" height="${height}" rx="${cornerRadius}" ry="${cornerRadius}" fill="currentColor" fill-opacity="0.12" data-role="track"></rect>` +
-    `<rect x="0" y="0" width="${filledWidth}" height="${height}" rx="${cornerRadius}" ry="${cornerRadius}" fill="${PROGRESS_FILL_COLOR}" data-role="fill" data-percent="${round(clamped)}"></rect>` +
-    `</svg>`
-  );
+export function buildSunburstData(features: readonly FeatureReportView[]): SunburstFeatureNode[] {
+  return features.map((feature) => ({
+    name: feature.name,
+    result: feature.result,
+    children: feature.scenarios.map((scenario) => ({
+      name: scenario.name,
+      result: scenario.result,
+      children: scenario.steps.map((step) => ({
+        name: truncate(`${step.keyword}: ${step.text}`, SUNBURST_STEP_NAME_MAX_LENGTH),
+        result: step.result,
+        hasEvidence: step.evidence.length > 0,
+      })),
+    })),
+  }));
 }
 
-/** Porcentaje de `value` sobre `total`, redondeado a entero. `0` si `total === 0` (nunca `NaN`). */
-function percentOf(value: number, total: number): number {
-  return total === 0 ? 0 : Math.round((value / total) * 100);
-}
-
-/** Redondea a 3 decimales — suficiente precisión visual, evita floats larguísimos en el markup (p. ej. `69.115...`). */
-function round(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
-/** Escapa los 5 caracteres especiales de XML. Defensivo: hoy todo el texto insertado es interno (etiquetas fijas), pero mantiene el SVG válido si eso cambia. */
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+function truncate(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }

@@ -1,0 +1,367 @@
+{{!--
+  Construye los 4 charts de ECharts del dashboard (gauge, doughnut, barra
+  apilada por feature, sunburst jerárquico) a partir del JSON embebido por
+  `dashboard-data.hbs` — ver `core/report/charts.ts`/`reportGenerator.ts`
+  para cómo se construyen esos datos server-side.
+
+  Requiere que `assets/echarts.custom.min.js` (ver
+  `templates/default/vite.echarts.config.ts`) ya se haya cargado ANTES de
+  este partial (ver el orden de `<script>` en `index.hbs`).
+
+  Todo el color/tipografía de los charts se lee de las custom properties
+  CSS del reporte (`--qa-*`, ver partials/styles.hbs) vía
+  `getComputedStyle`, nunca hardcodeado — así los 4 charts reaccionan al
+  toggle de tema (ver el listener del evento `qa-theme-change`, disparado
+  por partials/theme-toggle-script.hbs) exactamente igual que el resto de
+  la página. Los colores de SERIE (segmento de estado) son la única
+  excepción: usan el hex FIJO de `resultColors` (ver la nota de diseño de
+  `RESULT_COLORS` en charts.ts) — nunca cambian de tema, a propósito.
+--}}
+<script>
+  (function () {
+    // Best-effort: si por lo que sea la librería o los datos no cargaron,
+    // el resto del dashboard (números, lista de features) sigue funcionando
+    // igual — los charts son un realce, no la fuente de verdad del reporte.
+    if (!window.echarts) return;
+    var dataEl = document.getElementById('qa-dashboard-data');
+    var colorsEl = document.getElementById('qa-result-colors');
+    var labelsEl = document.getElementById('qa-result-labels');
+    if (!dataEl || !colorsEl || !labelsEl) return;
+
+    var dashboard = JSON.parse(dataEl.textContent);
+    var resultColors = JSON.parse(colorsEl.textContent);
+    var resultLabels = JSON.parse(labelsEl.textContent);
+    var RESULT_ORDER = ['pass', 'fail', 'skip', 'pending'];
+
+    function themeColors() {
+      var style = getComputedStyle(document.documentElement);
+      function read(name) {
+        return style.getPropertyValue(name).trim();
+      }
+      return {
+        fg: read('--qa-fg'),
+        fgMuted: read('--qa-fg-muted'),
+        border: read('--qa-border'),
+        bgElevated: read('--qa-bg-elevated'),
+        fontBody: read('--qa-font-body'),
+        fontDisplay: read('--qa-font-display'),
+      };
+    }
+
+    // Mismas fórmulas que `.qa-hero__number`/`.qa-hero__number span` en
+    // partials/styles.hbs (`clamp(...)`) — un canvas no puede leer `clamp()`
+    // del CSS, así que se replica el cálculo a mano en JS, asumiendo
+    // 1rem = 16px (el reporte nunca sobreescribe el font-size del `<html>`).
+    function heroNumberFontSizePx() {
+      var vw = window.innerWidth / 100;
+      return clampPx(3.25 * 16, 2.4 * 16 + 4.2 * vw, 5.5 * 16);
+    }
+    function heroPercentFontSizePx() {
+      var vw = window.innerWidth / 100;
+      return clampPx(1.75 * 16, 1.4 * 16 + 1.8 * vw, 2.5 * 16);
+    }
+    function clampPx(min, preferred, max) {
+      return Math.min(max, Math.max(min, preferred));
+    }
+
+    var registered = [];
+
+    function registerChart(elementId, buildOption) {
+      var el = document.getElementById(elementId);
+      if (!el) return null;
+      var chart = window.echarts.init(el);
+      chart.setOption(buildOption(themeColors()));
+      registered.push({ chart: chart, buildOption: buildOption });
+      return chart;
+    }
+
+    function buildGaugeOption(colors) {
+      var value = dashboard.passRatePercent;
+      var bigSize = heroNumberFontSizePx();
+      var pctSize = heroPercentFontSizePx();
+      return {
+        animationDuration: 1000,
+        animationEasing: 'cubicOut',
+        series: [
+          {
+            type: 'gauge',
+            startAngle: 225,
+            endAngle: -45,
+            min: 0,
+            max: 100,
+            radius: '96%',
+            progress: {
+              show: true,
+              width: 20,
+              itemStyle: {
+                // Gradiente HORIZONTAL (izquierda→derecha), no vertical: el
+                // arco va de 225° (0%, abajo-izquierda) a -45° (100%,
+                // abajo-derecha) PASANDO por arriba (50%, arriba-centro) —
+                // un gradiente horizontal calza con esa geometría (extremo
+                // izquierdo = 0% = fail, centro = 50% = pending, extremo
+                // derecho = 100% = pass) mucho mejor que uno vertical, que
+                // no distingue el lado izquierdo del derecho.
+                color: {
+                  type: 'linear',
+                  x: 0,
+                  y: 0,
+                  x2: 1,
+                  y2: 0,
+                  colorStops: [
+                    { offset: 0, color: resultColors.fail },
+                    { offset: 0.5, color: resultColors.pending },
+                    { offset: 1, color: resultColors.pass },
+                  ],
+                },
+              },
+            },
+            axisLine: { lineStyle: { width: 20, color: [[1, colors.border + '40']] } },
+            pointer: { show: false },
+            anchor: { show: false },
+            axisTick: { show: false },
+            splitLine: { show: false },
+            axisLabel: { show: false },
+            detail: {
+              valueAnimation: true,
+              formatter: '{num|{value}}{pct|%}',
+              rich: {
+                num: { fontFamily: colors.fontDisplay, fontWeight: 600, fontSize: bigSize, color: colors.fg },
+                pct: { fontFamily: colors.fontDisplay, fontWeight: 500, fontSize: pctSize, color: colors.fg + 'b3' },
+              },
+              offsetCenter: [0, '5%'],
+            },
+            data: [{ value: value }],
+          },
+        ],
+      };
+    }
+
+    function buildDoughnutOption(colors) {
+      var distribution = dashboard.distribution;
+      var total = RESULT_ORDER.reduce(function (sum, key) {
+        return sum + (distribution[key] || 0);
+      }, 0);
+
+      if (total === 0) {
+        return {
+          series: [
+            {
+              type: 'pie',
+              radius: ['62%', '92%'],
+              silent: true,
+              label: { show: false },
+              itemStyle: { color: colors.border, opacity: 0.4 },
+              data: [{ value: 1, name: 'Sin datos' }],
+            },
+          ],
+          graphic: {
+            type: 'text',
+            left: 'center',
+            top: 'center',
+            style: { text: 'Sin datos', fill: colors.fgMuted, fontFamily: colors.fontBody, fontSize: 13 },
+          },
+        };
+      }
+
+      var seriesData = RESULT_ORDER.filter(function (key) {
+        return distribution[key] > 0;
+      }).map(function (key) {
+        return { name: resultLabels[key], value: distribution[key], itemStyle: { color: resultColors[key] } };
+      });
+
+      return {
+        tooltip: {
+          trigger: 'item',
+          backgroundColor: colors.bgElevated,
+          borderColor: colors.border,
+          borderWidth: 1,
+          textStyle: { color: colors.fg, fontFamily: colors.fontBody },
+          formatter: function (params) {
+            return params.name + ': ' + params.value + ' (' + params.percent + '%)';
+          },
+        },
+        series: [
+          {
+            type: 'pie',
+            radius: ['62%', '92%'],
+            avoidLabelOverlap: true,
+            label: { show: false },
+            labelLine: { show: false },
+            itemStyle: { borderRadius: 6, borderColor: colors.bgElevated, borderWidth: 2 },
+            emphasis: { scaleSize: 6 },
+            data: seriesData,
+          },
+        ],
+        graphic: null,
+      };
+    }
+
+    function buildFeatureBarsOption(colors) {
+      var bars = dashboard.featureBars;
+      var names = bars.map(function (bar) {
+        return bar.name;
+      });
+
+      function seriesFor(key) {
+        return {
+          name: resultLabels[key],
+          type: 'bar',
+          stack: 'total',
+          barMaxWidth: 22,
+          itemStyle: { color: resultColors[key] },
+          emphasis: { focus: 'series' },
+          data: bars.map(function (bar) {
+            return bar[key];
+          }),
+        };
+      }
+
+      return {
+        grid: { left: 8, right: 24, top: 8, bottom: 8, containLabel: true },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: colors.bgElevated,
+          borderColor: colors.border,
+          borderWidth: 1,
+          textStyle: { color: colors.fg, fontFamily: colors.fontBody },
+          formatter: function (params) {
+            var lines = [params[0].name];
+            params.forEach(function (param) {
+              if (param.value) lines.push(param.marker + ' ' + param.seriesName + ': ' + param.value);
+            });
+            return lines.join('<br/>');
+          },
+        },
+        xAxis: {
+          type: 'value',
+          axisLine: { show: false },
+          axisTick: { show: false },
+          splitLine: { lineStyle: { color: colors.border, opacity: 0.5 } },
+          axisLabel: { color: colors.fgMuted, fontFamily: colors.fontBody },
+        },
+        yAxis: {
+          type: 'category',
+          data: names,
+          // `inverse: true`: por default, ECharts dibuja el primer elemento
+          // del array ABAJO (como un eje Y matemático) — `buildFeatureBars`
+          // ordena ascendente por passRatePercent (el más problemático
+          // primero, ver charts.ts), así que sin este flag el más
+          // problemático terminaría dibujado ABAJO, al revés de "el
+          // cliente vea primero lo que necesita atención" (ver spec).
+          inverse: true,
+          axisLine: { lineStyle: { color: colors.border } },
+          axisTick: { show: false },
+          axisLabel: { color: colors.fg, fontFamily: colors.fontBody, width: 150, overflow: 'truncate' },
+        },
+        series: RESULT_ORDER.map(seriesFor),
+      };
+    }
+
+    function toSunburstNode(node) {
+      var mapped = {
+        name: node.name,
+        result: node.result,
+        hasEvidence: node.hasEvidence,
+        itemStyle: { color: resultColors[node.result] },
+      };
+
+      // `value` solo en los nodos hoja (steps): si un nodo con hijos también
+      // trae un `value` propio que no coincide con la suma de sus hijos,
+      // ECharts rompe el layout angular del sunburst (solo dibuja el último
+      // hijo, ocupando el 100% del arco del padre — los demás desaparecen).
+      // Omitir `value` en feature/scenario deja que ECharts lo derive
+      // sumando sus hijos, que además es lo que da el resultado visual
+      // correcto: cada rama ocupa espacio proporcional a su cantidad de
+      // steps, en vez de todas las features/scenarios repartiéndose el
+      // círculo en partes iguales sin importar cuántos steps tengan.
+      if (node.children) {
+        mapped.children = node.children.map(toSunburstNode);
+      } else {
+        mapped.value = 1;
+      }
+
+      return mapped;
+    }
+
+    function buildSunburstOption(colors) {
+      return {
+        tooltip: {
+          backgroundColor: colors.bgElevated,
+          borderColor: colors.border,
+          borderWidth: 1,
+          textStyle: { color: colors.fg, fontFamily: colors.fontBody },
+          formatter: function (info) {
+            var node = info.data;
+            var lines = [node.name, resultLabels[node.result]];
+            if (typeof node.hasEvidence === 'boolean') {
+              lines.push(node.hasEvidence ? 'Con evidencia adjunta' : 'Sin evidencia adjunta');
+            }
+            return lines.join('<br/>');
+          },
+        },
+        series: [
+          {
+            type: 'sunburst',
+            radius: [0, '90%'],
+            nodeClick: 'zoomToNode',
+            sort: null,
+            emphasis: { focus: 'ancestor' },
+            itemStyle: { borderColor: colors.bgElevated, borderWidth: 1 },
+            label: { show: false },
+            levels: [
+              {},
+              { r0: '12%', r: '42%' },
+              { r0: '42%', r: '68%' },
+              { r0: '68%', r: '90%' },
+            ],
+            data: dashboard.sunburst.map(toSunburstNode),
+          },
+        ],
+      };
+    }
+
+    registerChart('qa-chart-gauge', buildGaugeOption);
+    registerChart('qa-chart-doughnut', buildDoughnutOption);
+    if (dashboard.showFeatureBars) {
+      // Alto proporcional a la cantidad de features — con muchas, un alto
+      // fijo dejaría las barras apretadas; con pocas, sobraría aire vacío.
+      var barsEl = document.getElementById('qa-chart-feature-bars');
+      if (barsEl) barsEl.style.height = Math.max(180, dashboard.featureBars.length * 40) + 'px';
+      var barsChart = registerChart('qa-chart-feature-bars', buildFeatureBarsOption);
+      if (barsChart) {
+        barsChart.on('click', function (params) {
+          var bar = dashboard.featureBars[params.dataIndex];
+          if (bar) window.location.href = bar.detailPath;
+        });
+      }
+    }
+    if (dashboard.showSunburst) {
+      registerChart('qa-chart-sunburst', buildSunburstOption);
+    }
+
+    function rerenderAll() {
+      var colors = themeColors();
+      registered.forEach(function (entry) {
+        entry.chart.setOption(entry.buildOption(colors), true);
+      });
+    }
+
+    // Reacciona al toggle de tema (ver partials/theme-toggle-script.hbs,
+    // que dispara este evento custom después de cambiar `data-theme`) —
+    // sin esto, los charts quedarían pintados con los colores del tema
+    // viejo hasta la próxima carga de página.
+    document.addEventListener('qa-theme-change', rerenderAll);
+
+    var resizeTimeout;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(function () {
+        registered.forEach(function (entry) {
+          entry.chart.resize();
+        });
+        rerenderAll(); // recalcula el tamaño de fuente del gauge (clamp con vw).
+      }, 120);
+    });
+  })();
+</script>

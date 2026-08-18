@@ -21,6 +21,11 @@
         // Ver nota en theme-init.hbs: si no hay localStorage, el toggle
         // sigue funcionando para esta vista, solo no persiste entre recargas.
       }
+      // Evento custom (no específico de ningún consumidor): hoy solo lo
+      // escucha `dashboard-charts-script.hbs` (index.html) para repintar los
+      // 4 charts de ECharts con los colores del nuevo tema — inocuo en
+      // feature-detail.html, que no tiene ningún listener registrado.
+      document.dispatchEvent(new CustomEvent('qa-theme-change'));
     }
 
     var button = document.getElementById('qa-theme-toggle');

@@ -1,0 +1,141 @@
+{{!--
+  Acordeones de la vista de detalle: cada scenario y cada step son un
+  disclosure widget independiente (WAI-ARIA "Disclosure", `aria-expanded` +
+  `aria-controls`) con transición de `max-height` (~250ms, ver
+  partials/styles.hbs) — nunca `<details>` nativo, que no anima el alto sin
+  APIs muy nuevas y sin soporte parejo.
+
+  El estado por defecto (scenario abierto si falló o es el primero de una
+  feature sin fallos; step siempre cerrado) ya viene RENDERIZADO server-side
+  (ver el helper `scenarioDefaultOpen`, `core/report/templateEngine.ts`, y
+  `feature-detail.hbs`) — este script nunca decide ese default por su
+  cuenta. Hacerlo así evita un flash de "todo expandido" mientras el
+  `<body>` todavía se está parseando: si el default se decidiera acá, HASTA
+  que este `<script>` (al final del body) corre, cada `.qa-scenario-body`
+  se vería en su alto natural (sin `max-height` todavía aplicado).
+
+  Este script solo:
+  1. Corrige el estado inicial si `sessionStorage` tiene guardado algo
+     DISTINTO del default que el server ya renderizó (sin animar).
+  2. Encadena los toggles de click (con animación).
+  3. Maneja "Ver primer fallo".
+
+  Persistencia en `sessionStorage` (no `localStorage`: es estado de ESTA
+  sesión de lectura, no algo que deba sobrevivir a cerrar el navegador),
+  bajo una única clave con un objeto `{ [idDelElemento]: boolean }` — el
+  `id` de cada `.qa-scenario`/`.qa-step` ya es único dentro de la página
+  (viene del id determinístico de la sesión, ver `core/session/ids.ts`),
+  así que alcanza como clave sin necesitar namespacing extra.
+--}}
+<script>
+  (function () {
+    var STORAGE_KEY = 'qa-evidence-reporter-accordion';
+    var state = {};
+    try {
+      state = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
+    } catch (error) {
+      state = {};
+    }
+
+    function persist() {
+      try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (error) {
+        // Ver nota en theme-init.hbs: sin sessionStorage disponible, los
+        // acordeones siguen funcionando en esta vista, solo no persisten
+        // entre navegaciones.
+      }
+    }
+
+    /** Aplica el estado abierto/cerrado a un par toggle+body, animando el `max-height` (o sin animar, en la carga inicial). */
+    function setOpen(toggle, body, open, animate) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+      if (!animate) {
+        body.style.maxHeight = open ? 'none' : '0px';
+        return;
+      }
+
+      if (open) {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        body.addEventListener('transitionend', function handler() {
+          body.removeEventListener('transitionend', handler);
+          // Si en el ínterin se volvió a cerrar, no pisar ese estado.
+          if (toggle.getAttribute('aria-expanded') === 'true') body.style.maxHeight = 'none';
+        });
+      } else {
+        // Si estaba en "none" (abierto sin animar, ver rama de arriba),
+        // primero fijar un alto concreto — animar DESDE "none" no anima
+        // nada, el navegador lo trata como un salto.
+        if (body.style.maxHeight === 'none' || body.style.maxHeight === '') {
+          body.style.maxHeight = body.scrollHeight + 'px';
+        }
+        void body.offsetHeight; // fuerza reflow antes de animar a 0.
+        body.style.maxHeight = '0px';
+      }
+    }
+
+    /** `storageKey` es el `id` del contenedor externo (`.qa-scenario`/`.qa-step`), no el del body — único dentro de la página, ver nota de diseño arriba. */
+    function wireDisclosure(toggle, body, storageKey) {
+      var serverDefaultOpen = toggle.getAttribute('aria-expanded') === 'true';
+      var open = Object.prototype.hasOwnProperty.call(state, storageKey) ? state[storageKey] : serverDefaultOpen;
+
+      // Solo tocar el DOM si el valor restaurado difiere de lo que el
+      // server ya renderizó — en el caso común (primera visita, sin nada
+      // en `sessionStorage` todavía) no hay nada que corregir.
+      if (open !== serverDefaultOpen) setOpen(toggle, body, open, false);
+
+      toggle.addEventListener('click', function () {
+        var next = toggle.getAttribute('aria-expanded') !== 'true';
+        setOpen(toggle, body, next, true);
+        state[storageKey] = next;
+        persist();
+      });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-scenario]'), function (scenarioEl) {
+      var toggle = scenarioEl.querySelector('[data-scenario-toggle]');
+      var body = scenarioEl.querySelector('[data-scenario-body]');
+      if (toggle && body) wireDisclosure(toggle, body, scenarioEl.id);
+
+      Array.prototype.forEach.call(scenarioEl.querySelectorAll('[data-step]'), function (stepEl) {
+        var stepToggle = stepEl.querySelector('[data-step-toggle]');
+        var stepBody = stepEl.querySelector('[data-step-body]');
+        if (stepToggle && stepBody) wireDisclosure(stepToggle, stepBody, stepEl.id);
+      });
+    });
+
+    var jumpButton = document.querySelector('[data-jump-to-first-failure]');
+    if (jumpButton) {
+      jumpButton.addEventListener('click', function () {
+        var scenarioEl = document.getElementById(jumpButton.getAttribute('data-target-scenario-id'));
+        if (!scenarioEl) return;
+
+        var scenarioToggle = scenarioEl.querySelector('[data-scenario-toggle]');
+        var scenarioBody = scenarioEl.querySelector('[data-scenario-body]');
+        if (scenarioToggle && scenarioBody && scenarioToggle.getAttribute('aria-expanded') !== 'true') {
+          setOpen(scenarioToggle, scenarioBody, true, true);
+          state[scenarioEl.id] = true;
+        }
+
+        var firstFailedStep = scenarioEl.querySelector('[data-step][data-result="fail"]');
+        if (firstFailedStep) {
+          var stepToggle = firstFailedStep.querySelector('[data-step-toggle]');
+          var stepBody = firstFailedStep.querySelector('[data-step-body]');
+          if (stepToggle && stepBody && stepToggle.getAttribute('aria-expanded') !== 'true') {
+            setOpen(stepToggle, stepBody, true, true);
+            state[firstFailedStep.id] = true;
+          }
+        }
+        persist();
+
+        // Un frame de margen para que el layout ya haya reflowed tras abrir
+        // el scenario/step ANTES de calcular a dónde hay que scrollear —
+        // si no, `scrollIntoView` puede apuntar a una posición vieja.
+        requestAnimationFrame(function () {
+          scenarioEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    }
+  })();
+</script>

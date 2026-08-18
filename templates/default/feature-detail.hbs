@@ -25,7 +25,14 @@
               {{feature.summary.pass}}/{{feature.summary.total}} scenarios aprobados
             </p>
             {{#if feature.firstFailedScenarioId}}
-              <a class="qa-jump-to-failure" href="#scenario-{{feature.firstFailedScenarioId}}">{{> icon-alert}} Ver primer fallo</a>
+              <button
+                type="button"
+                class="qa-jump-to-failure"
+                data-jump-to-first-failure
+                data-target-scenario-id="scenario-{{feature.firstFailedScenarioId}}"
+              >
+                {{> icon-alert}} Ver primer fallo
+              </button>
             {{/if}}
           </div>
           <div class="qa-hero__side">{{> legend summary=feature.summary}}</div>
@@ -33,49 +40,90 @@
       </section>
 
       <h2 class="qa-section-heading">Escenarios</h2>
-      <p class="qa-hint">Cada paso sigue el formato Gherkin: <strong>Given</strong> (condición inicial), <strong>When</strong> (acción) y <strong>Then</strong> (resultado esperado).</p>
+      <p class="qa-hint">Cada paso sigue el formato Gherkin: <strong>Given</strong> (condición inicial), <strong>When</strong> (acción) y <strong>Then</strong> (resultado esperado). Hacé clic en un scenario o en un step para ver su detalle.</p>
 
       {{#each feature.scenarios}}
-        <section class="qa-scenario qa-rail qa-rail--{{result}}" id="scenario-{{id}}" aria-label="Scenario: {{name}}">
-          <div class="qa-scenario-header">
+        <section
+          class="qa-scenario qa-rail qa-rail--{{result}}"
+          id="scenario-{{id}}"
+          data-scenario
+          data-result="{{result}}"
+        >
+          <button
+            type="button"
+            class="qa-scenario-header"
+            aria-expanded="{{scenarioDefaultOpen result @root.feature.result @first}}"
+            aria-controls="scenario-body-{{id}}"
+            data-scenario-toggle
+          >
+            {{> chevron-right}}
             <h3>{{name}}</h3>
             {{> badge}}
             {{#if tags.length}}
               {{#each tags}}<span class="qa-tag">#{{this}}</span> {{/each}}
             {{/if}}
-          </div>
+          </button>
 
-          {{#each steps}}
-            <div class="qa-step">
-              <div class="qa-step-header">
-                <span class="qa-step-keyword {{#if fromBackground}}qa-step-background{{/if}}">{{keyword}}</span>
-                <span>{{text}}</span>
-                {{> badge}}
-              </div>
+          <div
+            class="qa-scenario-body"
+            id="scenario-body-{{id}}"
+            data-scenario-body
+            style="max-height: {{#if (scenarioDefaultOpen result @root.feature.result @first)}}none{{else}}0px{{/if}};"
+          >
+            <div class="qa-scenario-body__inner">
+              {{#each steps}}
+                <div class="qa-step" id="step-{{id}}" data-step data-result="{{result}}">
+                  <button
+                    type="button"
+                    class="qa-step-header"
+                    aria-expanded="false"
+                    aria-controls="step-body-{{id}}"
+                    data-step-toggle
+                  >
+                    {{> chevron-right}}
+                    <span class="qa-step-keyword {{#if fromBackground}}qa-step-background{{/if}}">{{keyword}}</span>
+                    <span class="qa-step-text">{{text}}</span>
+                    {{> badge}}
+                  </button>
 
-              {{#if notes}}
-                <p class="qa-step-notes">📝 {{notes}}</p>
-              {{/if}}
+                  <div class="qa-step-body" id="step-body-{{id}}" data-step-body style="max-height: 0px;">
+                    <div class="qa-step-body__inner">
+                      {{#if notes}}
+                        <p class="qa-step-notes">📝 {{notes}}</p>
+                      {{/if}}
 
-              {{#if (eq result "fail")}}
-                <div class="qa-defect">
-                  <strong>{{> icon-alert}} Defecto encontrado</strong>
-                  {{defectDescription}}
+                      {{#if (eq result "fail")}}
+                        <div class="qa-defect">
+                          <strong>{{> icon-alert}} Defecto encontrado</strong>
+                          {{defectDescription}}
+                        </div>
+                      {{/if}}
+
+                      {{#if evidence.length}}
+                        <div class="qa-evidence-grid">
+                          {{#each evidence}}
+                            {{> evidence-item}}
+                          {{/each}}
+                        </div>
+                      {{/if}}
+
+                      {{#unless notes}}
+                        {{#unless (eq result "fail")}}
+                          {{#unless evidence.length}}
+                            <p class="qa-empty">Sin notas, defecto ni evidencia para este step.</p>
+                          {{/unless}}
+                        {{/unless}}
+                      {{/unless}}
+                    </div>
+                  </div>
                 </div>
-              {{/if}}
-
-              {{#if evidence.length}}
-                <div class="qa-evidence-grid">
-                  {{#each evidence}}
-                    {{> evidence-item}}
-                  {{/each}}
-                </div>
-              {{/if}}
+              {{/each}}
             </div>
-          {{/each}}
+          </div>
         </section>
       {{/each}}
     </main>
+    {{> accordion-script}}
     {{> theme-toggle-script}}
   </body>
 </html>

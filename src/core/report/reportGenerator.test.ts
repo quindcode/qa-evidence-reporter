@@ -214,13 +214,21 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
 
     const checkoutHtml = await readFile(join(outputDir, 'features', 'f1-checkout.html'), 'utf-8');
     expect(checkoutHtml).toContain(`id="${expectedAnchor}"`);
-    expect(checkoutHtml).toContain(`class="qa-jump-to-failure" href="#${expectedAnchor}"`);
+    // En la página de detalle, "Ver primer fallo" es un <button> (no un
+    // <a href="#...">) — necesita disparar JS que además EXPANDA el
+    // scenario/step antes de scrollear (ver accordion-script.hbs), algo
+    // que un link de solo-navegación no puede hacer. `class="..."` con
+    // comillas (no el nombre de clase suelto): esa cadena EXACTA solo
+    // aparece en el atributo del botón, nunca en el selector CSS del
+    // `<style>` embebido (`.qa-jump-to-failure { ... }`, sin comillas) ni
+    // en `accordion-script.hbs` (que solo referencia el atributo
+    // `data-jump-to-first-failure`, no esta clase).
+    expect(checkoutHtml).toContain(`class="qa-jump-to-failure"`);
+    expect(checkoutHtml).toContain(`data-target-scenario-id="${expectedAnchor}"`);
 
-    // Login no tiene ningún fallo -> sin link "Ver primer fallo" en su página
-    // (la clase SÍ aparece en el <style> embebido de toda página, ver
-    // styles.hbs — se busca el <a> real, no el nombre de la clase).
+    // Login no tiene ningún fallo -> sin botón "Ver primer fallo" en su página.
     const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
-    expect(loginHtml).not.toContain('class="qa-jump-to-failure"');
+    expect(loginHtml).not.toContain(`class="qa-jump-to-failure"`);
   });
 
   it('el index.html muestra los nombres de feature, badges de resultado y % correcto', async () => {
@@ -243,7 +251,14 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     // único scenario de "Checkout" tiene 1 pass y 1 fail -> deriva a "fail"
     // (0% también). Ninguno de los 2 scenarios de la sesión terminó "pass"
     // -> 0% global, aunque a nivel de steps sueltos hubiera 2 pass de 4.
-    expect(indexHtml).toContain('<p class="qa-hero__number">0<span>%</span></p>');
+    // El % ya no es texto estático (lo dibuja el gauge de ECharts en el
+    // centro del canvas, ver dashboard-charts-script.hbs) — el mount point
+    // sigue expresando el mismo dato en su aria-label, para accesibilidad y
+    // como ancla verificable en un test sin ejecutar JS de charting real.
+    expect(indexHtml).toMatch(/id="qa-chart-gauge"[^>]*aria-label="Tasa de aprobación: 0%"/s);
+    // El JSON que consume ECharts (ver dashboard-data.hbs) también refleja
+    // el mismo 0% global.
+    expect(indexHtml).toContain('"passRatePercent":0');
     // Ambas features muestran "0/1 scenarios" en su fila — si el conteo
     // siguiera siendo por steps, Login mostraría "1/2" (su step en pass sí
     // cuenta ahí), no "0/1".
@@ -316,11 +331,17 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     }
   });
 
-  it('los SVG del dashboard (donut y barra de progreso) tienen CSS que los hace responsivos', async () => {
-    // Regresión: charts.ts genera los SVG con width/height fijos en px (ver
-    // su JSDoc). Sin un override de CSS que los deje escalar dentro de su
-    // contenedor, en pantallas angostas la barra de progreso (480px) se sale
-    // del .qa-card del dashboard — bug real reportado por un usuario.
+  it('los mount points de los charts del dashboard (gauge/doughnut) tienen CSS que evita que se salgan de la tarjeta en pantallas angostas', async () => {
+    // Regresión histórica (antes de integrar ECharts, con SVG generado
+    // server-side): un elemento de ancho fijo en px sin `max-width: 100%`
+    // se salía del `.qa-card` del dashboard en pantallas angostas — bug real
+    // reportado por un usuario. Los mount points de ECharts (ver
+    // partials/styles.hbs, `.qa-hero__gauge`/`.qa-hero__doughnut`) llevan
+    // ancho fijo por la misma razón que el SVG viejo (ECharts necesita
+    // dimensiones concretas al inicializar el canvas), así que necesitan la
+    // misma protección — el `.qa-progress-track` de la barra de sesión, en
+    // cambio, ya no la necesita: es un `<div>` sin ancho fijo (100% de su
+    // contenedor por default), a diferencia del SVG de 480px que reemplazó.
     const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
     const generator = createReportGenerator(
       { projectName: 'Proyecto Demo', evidenceBaseDir },
@@ -330,7 +351,8 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     await generator.generate(sessionState, outputDir);
 
     const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
-    expect(indexHtml).toMatch(/\.qa-hero\s+svg\s*\{[^}]*max-width:\s*100%/);
+    expect(indexHtml).toMatch(/\.qa-hero__gauge\s*\{[^}]*max-width:\s*100%/);
+    expect(indexHtml).toMatch(/\.qa-hero__doughnut\s*\{[^}]*max-width:\s*100%/);
   });
 
   describe('branding', () => {
