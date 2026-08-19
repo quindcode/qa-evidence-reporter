@@ -77,12 +77,24 @@ export function App(): JSX.Element {
   const [branding, setBranding] = useState<Branding>(NO_BRANDING);
   const [jiraEnabled, setJiraEnabled] = useState(false);
   const [azureDevOpsEnabled, setAzureDevOpsEnabled] = useState(false);
+  const [jiraTokenConfigured, setJiraTokenConfigured] = useState(false);
+  const [azureDevOpsTokenConfigured, setAzureDevOpsTokenConfigured] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   // A qué fase volver al cerrar Configuración — 'select' o 'runner', nunca
   // 'settings' ni 'loading' (no tendría sentido "volver" a esas dos).
   const [phaseBeforeSettings, setPhaseBeforeSettings] = useState<Phase>('select');
 
-  const loadFeatures = useCallback(async () => {
+  /**
+   * `resetToSelect`: por defecto `true` (el uso original — carga inicial de
+   * la app y "Cerrar sesión", donde SÍ corresponde terminar en la pantalla
+   * de selección). `handleSettingsUpdate` la llama con `false`: guardar el
+   * token de Jira/Azure DevOps desde Configuración (típicamente para
+   * resolver el aviso "Token no configurado" del propio Runner, ver
+   * `Runner.tsx`) no debería expulsar al usuario de su sesión en curso de
+   * vuelta a la selección de features — solo refrescar
+   * `jiraEnabled`/`azureDevOpsEnabled`/`tokenConfigured` en segundo plano.
+   */
+  const loadFeatures = useCallback(async (resetToSelect = true) => {
     try {
       const response = await api.getFeatures();
       setFeatures(response.features);
@@ -92,12 +104,14 @@ export function App(): JSX.Element {
       applyBranding(response.branding);
       setJiraEnabled(response.jira.enabled);
       setAzureDevOpsEnabled(response.azureDevOps.enabled);
+      setJiraTokenConfigured(response.jira.tokenConfigured);
+      setAzureDevOpsTokenConfigured(response.azureDevOps.tokenConfigured);
     } catch (err) {
       setError(
         err instanceof ApiRequestError ? err : new ApiRequestError('UNKNOWN_ERROR', String(err)),
       );
     } finally {
-      setPhase('select');
+      if (resetToSelect) setPhase('select');
     }
   }, []);
 
@@ -177,10 +191,14 @@ export function App(): JSX.Element {
    * (que deciden si `Runner` muestra los botones de publicar) viven en ESE
    * estado, no en `settings`, así que sin este refresh quedarían mostrando
    * datos viejos hasta la próxima recarga completa de la página.
+   * `resetToSelect: false` — guardar un token no debe expulsar al usuario
+   * de su sesión en curso de vuelta a la pantalla de selección (ver JSDoc
+   * de `loadFeatures`); `handleCloseSettings` ya sabe volver a la fase
+   * correcta (`phaseBeforeSettings`) cuando el usuario cierra Configuración.
    */
   function handleSettingsUpdate(nextSettings: Settings): void {
     setSettings(nextSettings);
-    void loadFeatures();
+    void loadFeatures(false);
   }
 
   function handleCloseSettings(): void {
@@ -236,6 +254,8 @@ export function App(): JSX.Element {
             onSessionClosed={handleSessionClosed}
             jiraEnabled={jiraEnabled}
             azureDevOpsEnabled={azureDevOpsEnabled}
+            jiraTokenConfigured={jiraTokenConfigured}
+            azureDevOpsTokenConfigured={azureDevOpsTokenConfigured}
           />
         )}
 

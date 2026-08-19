@@ -62,16 +62,22 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
           highlightColor: context.config.branding.highlightColor,
           ctaColor: context.config.branding.ctaColor,
         },
-        // Solo el booleano derivado: `baseUrl`/`email` (ni el token) se
-        // exponen acá, no hacen falta para decidir si mostrar el botón
-        // "Adjuntar a Jira" (ver `Runner.tsx`) — el detalle completo (para
-        // la pantalla de Configuración) vive en `GET /api/settings`.
+        // Solo booleanos derivados: `baseUrl`/`email` en sí (y el token) no
+        // se exponen acá, no hace falta el valor completo para decidir si
+        // mostrar el botón "Adjuntar a Jira" ni si mostrarlo habilitado (ver
+        // `Runner.tsx`) — el detalle completo (para la pantalla de
+        // Configuración) vive en `GET /api/settings`. `tokenConfigured` deja
+        // que el Runner avise ANTES de intentar publicar si todavía falta
+        // pegar el token, en vez de que el usuario descubra el error recién
+        // al hacer clic (a pedido explícito de feedback).
         jira: {
           enabled: Boolean(settings.jira.baseUrl && settings.jira.email),
+          tokenConfigured: settings.jira.tokenConfigured,
         },
         // Mismo criterio que `jira` de arriba.
         azureDevOps: {
           enabled: Boolean(settings.azureDevOps.organizationUrl && settings.azureDevOps.project),
+          tokenConfigured: settings.azureDevOps.tokenConfigured,
         },
       });
     }),

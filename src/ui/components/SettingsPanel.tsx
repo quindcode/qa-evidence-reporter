@@ -209,8 +209,7 @@ export function SettingsPanel({
         </h3>
         <p class="settings-panel__hint">
           No se guarda en <code>qa-config.json</code> ni en ningún archivo — solo queda en memoria
-          mientras este servidor siga corriendo. Si lo reiniciás, hay que volver a pegarlo acá (o
-          exportar <code>JIRA_API_TOKEN</code> en la terminal, como antes).
+          mientras este servidor siga corriendo.
         </p>
         <div class="settings-panel__token-row">
           <input
@@ -252,7 +251,8 @@ export function SettingsPanel({
           </span>
         </h3>
         <p class="settings-panel__hint">
-          Mismo criterio que el token de Jira: solo en memoria de este servidor, nunca en disco.
+          No se guarda en <code>qa-config.json</code> ni en ningún archivo — solo queda en memoria
+          mientras este servidor siga corriendo.
         </p>
         <div class="settings-panel__token-row">
           <input

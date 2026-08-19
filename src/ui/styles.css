@@ -772,6 +772,31 @@ body {
   flex-wrap: wrap;
 }
 
+/* A diferencia de `.settings-panel__token-status` (donde "no configurado"
+   es neutro: la integración es opcional) — acá SÍ es rojo a propósito: el
+   usuario está a punto de intentar publicar, así que "no configurado" es
+   una advertencia accionable ("no va a andar, andá primero a
+   Configuración"), no un dato de fondo. Ver el botón deshabilitado +
+   `title` al lado (Runner.tsx). */
+.report-panel__token-status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.report-panel__token-status--ok {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+}
+
 .report-panel__close {
   display: flex;
   align-items: center;

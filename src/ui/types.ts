@@ -114,25 +114,28 @@ export interface Branding {
 }
 
 /**
- * Forma de `GET /api/features` -> `jira` (ver `routes/features.ts`). Solo el
- * booleano derivado de `qa-config.json` -> `jira.baseUrl`/`jira.email` —
- * ninguno de los dos (ni el token, que nunca sale del server) se expone a la
- * UI; alcanza con saber si mostrar o no el botón "Adjuntar a Jira".
+ * Forma de `GET /api/features` -> `jira` (ver `routes/features.ts`). Solo
+ * booleanos derivados de `qa-config.json` -> `jira.baseUrl`/`jira.email` y
+ * del token en memoria del server — ninguno de los valores en sí (ni el
+ * token, que nunca sale del server) se expone a la UI. `enabled` decide si
+ * mostrar el botón "Adjuntar a Jira"; `tokenConfigured` decide si mostrarlo
+ * habilitado o avisar de antemano que falta el token (ver `Runner.tsx`).
  */
 export interface JiraFeatureConfig {
   enabled: boolean;
+  tokenConfigured: boolean;
 }
 
 /**
  * Forma de `GET /api/features` -> `azureDevOps` (ver `routes/features.ts`).
- * Mismo criterio que `JiraFeatureConfig`: solo el booleano derivado de
- * `qa-config.json` -> `azureDevOps.organizationUrl`/`azureDevOps.project`
- * — ni esos dos campos ni el PAT (que nunca sale del server) se exponen a
- * la UI, alcanza con saber si mostrar o no el botón "Adjuntar a Azure
- * DevOps".
+ * Mismo criterio que `JiraFeatureConfig`: solo booleanos derivados de
+ * `qa-config.json` -> `azureDevOps.organizationUrl`/`azureDevOps.project` y
+ * del PAT en memoria del server — ni esos valores ni el PAT en sí se
+ * exponen a la UI.
  */
 export interface AzureDevOpsFeatureConfig {
   enabled: boolean;
+  tokenConfigured: boolean;
 }
 
 /**

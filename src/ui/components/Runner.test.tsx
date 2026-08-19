@@ -122,6 +122,8 @@ describe('Runner — Cerrar sesión', () => {
         onSessionClosed={onSessionClosed}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -156,6 +158,8 @@ describe('Runner — Cerrar sesión', () => {
         onSessionClosed={onSessionClosed}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -180,6 +184,8 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -203,6 +209,8 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={true}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={true}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -240,6 +248,39 @@ describe('Runner — Adjuntar a Jira', () => {
     );
   });
 
+  it('con jiraTokenConfigured=false, avisa "Token no configurado" y deshabilita "Adjuntar a Jira" aunque haya clave cargada', async () => {
+    mockFetch();
+
+    render(
+      <Runner
+        session={SESSION}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={true}
+        azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generar reporte/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /ver reporte/i })).toBeInTheDocument(),
+    );
+
+    expect(screen.getByText(/token no configurado/i)).toBeInTheDocument();
+
+    fireEvent.input(screen.getByLabelText(/clave del issue de jira/i), {
+      target: { value: 'QA-123' },
+    });
+
+    // A diferencia del caso con token configurado: cargar la clave del
+    // issue NO alcanza para habilitar el botón — todavía falta el token.
+    expect(screen.getByRole('button', { name: /adjuntar a jira/i })).toBeDisabled();
+  });
+
   it('con jiraEnabled=true, un fallo de Jira llama a onError en vez de mostrar el link de éxito', async () => {
     mockFetch({ ok: false, status: 404 });
     const onError = vi.fn();
@@ -253,6 +294,8 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={true}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={true}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -285,6 +328,8 @@ describe('Runner — Adjuntar a Azure DevOps', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -310,6 +355,8 @@ describe('Runner — Adjuntar a Azure DevOps', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={true}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={true}
       />,
     );
 
@@ -368,6 +415,8 @@ describe('Runner — Adjuntar a Azure DevOps', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={true}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={true}
       />,
     );
 
@@ -407,6 +456,8 @@ describe('Runner — Navegación', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -449,6 +500,8 @@ describe('Runner — Navegación', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 
@@ -577,6 +630,8 @@ describe('Runner — Marcar resultado como Fail', () => {
         onSessionClosed={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
       />,
     );
 

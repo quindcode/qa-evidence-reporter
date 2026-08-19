@@ -85,7 +85,7 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(response.body.features[0].name).toContain('Inicio de sesión');
     expect(response.body.session).toEqual({ exists: false });
     expect(response.body.projectName).toBe('Proyecto de prueba');
-    expect(response.body.jira).toEqual({ enabled: false });
+    expect(response.body.jira).toEqual({ enabled: false, tokenConfigured: false });
   });
 
   it('GET /api/features con jira.baseUrl y jira.email configurados: jira.enabled es true', async () => {
@@ -97,7 +97,7 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
 
     const response = await request(app).get('/api/features').expect(200);
 
-    expect(response.body.jira).toEqual({ enabled: true });
+    expect(response.body.jira).toEqual({ enabled: true, tokenConfigured: false });
   });
 
   it('GET /api/features con solo jira.baseUrl (sin email): jira.enabled sigue false', async () => {
@@ -109,7 +109,27 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
 
     const response = await request(app).get('/api/features').expect(200);
 
-    expect(response.body.jira).toEqual({ enabled: false });
+    expect(response.body.jira).toEqual({ enabled: false, tokenConfigured: false });
+  });
+
+  it('GET /api/features con token de Jira/PAT de Azure DevOps configurados: tokenConfigured es true en ambos', async () => {
+    const app = createApp(
+      await buildContext(
+        projectRoot,
+        {
+          jira: { baseUrl: 'https://tuempresa.atlassian.net', email: 'qa@tuempresa.com' },
+          azureDevOps: { organizationUrl: 'https://dev.azure.com/tuorg', project: 'Checkout' },
+        },
+        null,
+        'un-token',
+        'un-pat',
+      ),
+    );
+
+    const response = await request(app).get('/api/features').expect(200);
+
+    expect(response.body.jira).toEqual({ enabled: true, tokenConfigured: true });
+    expect(response.body.azureDevOps).toEqual({ enabled: true, tokenConfigured: true });
   });
 
   describe('branding', () => {

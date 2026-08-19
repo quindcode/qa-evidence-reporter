@@ -22,6 +22,17 @@ export interface RunnerProps {
   jiraEnabled: boolean;
   /** `GET /api/features` -> `azureDevOps.enabled` (ver `App.tsx`) — si es `false`, el botón "Adjuntar a Azure DevOps" del panel de reporte no se muestra en absoluto. */
   azureDevOpsEnabled: boolean;
+  /**
+   * `GET /api/features` -> `jira.tokenConfigured` (ver `App.tsx`) — a
+   * diferencia de `jiraEnabled` (que decide si la fila de Jira existe),
+   * esto decide si esa fila avisa "No configurado" y deshabilita "Adjuntar
+   * a Jira" ANTES de que el usuario intente publicar y se encuentre recién
+   * ahí con un error de token (a pedido explícito de feedback, tras un
+   * error real por token expirado/no configurado).
+   */
+  jiraTokenConfigured: boolean;
+  /** `GET /api/features` -> `azureDevOps.tokenConfigured` (ver `App.tsx`) — mismo criterio que `jiraTokenConfigured`. */
+  azureDevOpsTokenConfigured: boolean;
 }
 
 const STEP_KEYWORD_LABEL: Record<string, string> = {
@@ -43,6 +54,8 @@ export function Runner({
   onSessionClosed,
   jiraEnabled,
   azureDevOpsEnabled,
+  jiraTokenConfigured,
+  azureDevOpsTokenConfigured,
 }: RunnerProps): JSX.Element {
   const [evidenceFiles, setEvidenceFiles] = useState<EvidenceFile[]>([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
@@ -394,6 +407,11 @@ export function Runner({
               </div>
               {reportUrl && jiraEnabled && (
                 <div class="report-panel__row">
+                  <span
+                    class={`report-panel__token-status${jiraTokenConfigured ? ' report-panel__token-status--ok' : ''}`}
+                  >
+                    {jiraTokenConfigured ? 'Token configurado' : 'Token no configurado'}
+                  </span>
                   <input
                     type="text"
                     class="field__input"
@@ -408,7 +426,12 @@ export function Runner({
                     type="button"
                     class="button"
                     onClick={() => void handlePublishToJira()}
-                    disabled={busy || jiraIssueKey.trim().length === 0}
+                    disabled={busy || jiraIssueKey.trim().length === 0 || !jiraTokenConfigured}
+                    title={
+                      jiraTokenConfigured
+                        ? undefined
+                        : 'Falta configurar el token de Jira (⚙️ Configuración)'
+                    }
                   >
                     Adjuntar a Jira
                   </button>
@@ -426,6 +449,11 @@ export function Runner({
               )}
               {reportUrl && azureDevOpsEnabled && (
                 <div class="report-panel__row">
+                  <span
+                    class={`report-panel__token-status${azureDevOpsTokenConfigured ? ' report-panel__token-status--ok' : ''}`}
+                  >
+                    {azureDevOpsTokenConfigured ? 'Token configurado' : 'Token no configurado'}
+                  </span>
                   <input
                     type="text"
                     class="field__input"
@@ -442,7 +470,12 @@ export function Runner({
                     type="button"
                     class="button"
                     onClick={() => void handlePublishToAzureDevOps()}
-                    disabled={busy || !azureDevOpsWorkItemIdValid}
+                    disabled={busy || !azureDevOpsWorkItemIdValid || !azureDevOpsTokenConfigured}
+                    title={
+                      azureDevOpsTokenConfigured
+                        ? undefined
+                        : 'Falta configurar el PAT de Azure DevOps (⚙️ Configuración)'
+                    }
                   >
                     Adjuntar a Azure DevOps
                   </button>

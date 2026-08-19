@@ -29,8 +29,8 @@ const FEATURES_RESPONSE = {
   session: { exists: false },
   projectName: 'Proyecto Demo',
   branding: { logoUrl: null, primaryColor: null, accentColor: null, highlightColor: null, ctaColor: null },
-  jira: { enabled: false },
-  azureDevOps: { enabled: false },
+  jira: { enabled: false, tokenConfigured: false },
+  azureDevOps: { enabled: false, tokenConfigured: false },
 };
 
 const SETTINGS_RESPONSE = {
@@ -39,19 +39,28 @@ const SETTINGS_RESPONSE = {
   azureDevOps: { organizationUrl: null, project: null, tokenConfigured: false },
 };
 
-/** Rutea por URL — `GET /api/features` y `GET /api/settings` responden distinto. */
-function mockFeaturesAndSettings(): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockImplementation((url: string) => {
-      const body = url === '/api/settings' ? SETTINGS_RESPONSE : FEATURES_RESPONSE;
-      return Promise.resolve({
-        ok: true,
-        headers: { get: () => 'application/json' },
-        json: async () => body,
-      });
-    }),
-  );
+/**
+ * Rutea por URL — `GET /api/features` y `GET /api/settings` responden
+ * distinto. `jiraTokenResponse` (opcional) permite simular `POST
+ * /api/settings/jira-token` devolviendo `tokenConfigured: true`, para
+ * probar el flujo de "guardar token" sin tocar `/api/features` de verdad.
+ */
+function mockFeaturesAndSettings(jiraTokenResponse?: unknown): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const body =
+      url === '/api/settings/jira-token' && jiraTokenResponse
+        ? jiraTokenResponse
+        : url === '/api/settings'
+          ? SETTINGS_RESPONSE
+          : FEATURES_RESPONSE;
+    return Promise.resolve({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => body,
+    });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 describe('App — branding', () => {
@@ -67,8 +76,8 @@ describe('App — branding', () => {
         highlightColor: null,
         ctaColor: null,
       },
-      jira: { enabled: false },
-      azureDevOps: { enabled: false },
+      jira: { enabled: false, tokenConfigured: false },
+      azureDevOps: { enabled: false, tokenConfigured: false },
     });
 
     render(<App />);
@@ -96,8 +105,8 @@ describe('App — branding', () => {
         highlightColor: '#ffb91c',
         ctaColor: '#ff5530',
       },
-      jira: { enabled: false },
-      azureDevOps: { enabled: false },
+      jira: { enabled: false, tokenConfigured: false },
+      azureDevOps: { enabled: false, tokenConfigured: false },
     });
 
     render(<App />);
@@ -131,8 +140,8 @@ describe('App — branding', () => {
         highlightColor: null,
         ctaColor: null,
       },
-      jira: { enabled: false },
-      azureDevOps: { enabled: false },
+      jira: { enabled: false, tokenConfigured: false },
+      azureDevOps: { enabled: false, tokenConfigured: false },
     });
 
     render(<App />);
@@ -164,5 +173,40 @@ describe('App — Configuración', () => {
       expect(screen.getByText(/seleccioná las features a ejecutar/i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('heading', { name: 'Configuración' })).not.toBeInTheDocument();
+  });
+
+  it('guardar un token (ej. para resolver "Token no configurado" avisado en el Runner) NO expulsa de Configuración de vuelta a la selección', async () => {
+    // Regresión: `handleSettingsUpdate` (App.tsx) recargaba `GET
+    // /api/features` reusando `loadFeatures()`, que SIEMPRE forzaba
+    // `phase` a 'select' en su `finally` — pensado para la carga inicial
+    // de la app, pero con el efecto colateral de cerrar Configuración de
+    // golpe (o, si se abrió desde el Runner, tirar al usuario de vuelta a
+    // la selección de features) apenas se guardaba CUALQUIER cambio,
+    // incluido un token. `loadFeatures(false)` en `handleSettingsUpdate`
+    // evita este salto de fase.
+    const updatedSettings = {
+      ...SETTINGS_RESPONSE,
+      jira: { ...SETTINGS_RESPONSE.jira, tokenConfigured: true },
+    };
+    mockFeaturesAndSettings(updatedSettings);
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Proyecto Demo')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /configuración/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Configuración' })).toBeInTheDocument(),
+    );
+
+    fireEvent.input(screen.getByPlaceholderText(/token de api de jira/i), {
+      target: { value: 'un-token-secreto' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: /guardar token/i })[0]!);
+
+    // El estado se refresca con la respuesta simulada (tokenConfigured:
+    // true) y, sobre todo, sigue en Configuración — NO saltó a la pantalla
+    // de selección.
+    await waitFor(() => expect(screen.getByText('Configurado')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Configuración' })).toBeInTheDocument();
+    expect(screen.queryByText(/seleccioná las features a ejecutar/i)).not.toBeInTheDocument();
   });
 });
