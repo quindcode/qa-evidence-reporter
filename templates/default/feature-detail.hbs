@@ -24,16 +24,6 @@
             <p class="qa-hero__caption">
               {{feature.summary.total}} scenario{{pluralize feature.summary.total}} ejecutados
             </p>
-            {{#if feature.firstFailedScenarioId}}
-              <button
-                type="button"
-                class="qa-jump-to-failure"
-                data-jump-to-first-failure
-                data-target-scenario-id="scenario-{{feature.firstFailedScenarioId}}"
-              >
-                {{> icon-alert}} Ver primer fallo
-              </button>
-            {{/if}}
           </div>
           <div class="qa-hero__side">{{> legend summary=feature.summary}}</div>
         </div>

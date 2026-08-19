@@ -455,3 +455,139 @@ describe('Runner — Navegación', () => {
     expect(screen.getByRole('button', { name: /siguiente/i })).toBeInTheDocument();
   });
 });
+
+describe('Runner — Marcar resultado como Fail', () => {
+  it('cascada el fail y salta directo al siguiente scenario, sin llamar a /api/session/navigate otra vez', async () => {
+    // Dos scenarios en la misma feature: al fallar el primer step del
+    // primero, `sessionEngine.setStepResult` (ver core/session/sessionEngine.ts)
+    // ya cascadea fail a TODO ese scenario y mueve `currentPosition` directo
+    // al primer step del segundo scenario, DENTRO de la misma response de
+    // `/result`. El cliente (`Runner.handleSubmitResult`) no debe llamar a
+    // `/api/session/navigate` de nuevo en este caso — eso avanzaría un step
+    // de más sobre el salto que el server ya hizo.
+    const sessionWithTwoScenarios: SessionState = {
+      ...SESSION,
+      status: 'in_progress',
+      selectedFeatures: [
+        {
+          id: 'f0-login',
+          name: 'Login',
+          tags: [],
+          scenarios: [
+            {
+              id: 'f0-login_s0',
+              name: 'Successful login',
+              tags: [],
+              steps: [
+                {
+                  id: 'f0-login_s0_st0',
+                  step: { keyword: 'Given', text: 'a registered user', fromBackground: false },
+                  result: 'pending',
+                  evidenceFileIds: [],
+                  timestamps: {},
+                },
+              ],
+            },
+            {
+              id: 'f0-login_s1',
+              name: 'Failed login',
+              tags: [],
+              steps: [
+                {
+                  id: 'f0-login_s1_st0',
+                  step: {
+                    keyword: 'Given',
+                    text: 'a registered user',
+                    fromBackground: false,
+                  },
+                  result: 'pending',
+                  evidenceFileIds: [],
+                  timestamps: {},
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const currentStep = {
+      featureId: 'f0-login',
+      scenarioId: 'f0-login_s0',
+      step: sessionWithTwoScenarios.selectedFeatures[0].scenarios[0].steps[0],
+    };
+    const nextScenarioStep = sessionWithTwoScenarios.selectedFeatures[0].scenarios[1].steps[0];
+
+    const jumpedSession: SessionState = {
+      ...sessionWithTwoScenarios,
+      currentPosition: { featureIndex: 0, scenarioIndex: 1, stepIndex: 0 },
+      selectedFeatures: [
+        {
+          ...sessionWithTwoScenarios.selectedFeatures[0],
+          scenarios: [
+            {
+              ...sessionWithTwoScenarios.selectedFeatures[0].scenarios[0],
+              steps: sessionWithTwoScenarios.selectedFeatures[0].scenarios[0].steps.map(
+                (step) => ({ ...step, result: 'fail' as const, defectDescription: 'Pantalla rota' }),
+              ),
+            },
+            sessionWithTwoScenarios.selectedFeatures[0].scenarios[1],
+          ],
+        },
+      ],
+    };
+    const jumpedCurrentStep = {
+      featureId: 'f0-login',
+      scenarioId: 'f0-login_s1',
+      step: nextScenarioStep,
+    };
+
+    const navigateSpy = vi.fn();
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/result')) {
+        return Promise.resolve({
+          ok: true,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ session: jumpedSession, currentStep: jumpedCurrentStep }),
+        });
+      }
+      if (url.includes('/navigate')) {
+        navigateSpy(url);
+        return Promise.resolve({
+          ok: true,
+          headers: { get: () => 'application/json' },
+          json: async () => ({ session: jumpedSession, currentStep: jumpedCurrentStep }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ evidenceFiles: [] }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onSessionUpdate = vi.fn();
+
+    render(
+      <Runner
+        session={sessionWithTwoScenarios}
+        currentStep={currentStep}
+        onSessionUpdate={onSessionUpdate}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        jiraEnabled={false}
+        azureDevOpsEnabled={false}
+      />,
+    );
+
+    fireEvent.input(screen.getByLabelText(/descripción del defecto/i), {
+      target: { value: 'Pantalla rota' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /fail/i }));
+
+    await waitFor(() =>
+      expect(onSessionUpdate).toHaveBeenCalledWith(jumpedSession, jumpedCurrentStep),
+    );
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+});

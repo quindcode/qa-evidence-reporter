@@ -143,11 +143,19 @@ export function Runner({
         notes: notes || undefined,
         defectDescription: result === 'fail' ? defectDescription : undefined,
       });
-      // Avanza automáticamente al siguiente step tras marcar un resultado
-      // (ARCHITECTURE.md, "UX del runner").
-      const navigateResponse = await api.navigateNext();
-      onSessionUpdate(navigateResponse.session, navigateResponse.currentStep);
-      void resultResponse;
+      if (result === 'fail') {
+        // "Fail" ya cascadeó el resto de los steps del scenario y saltó la
+        // posición actual directo al siguiente scenario (ver
+        // `sessionEngine.setStepResult`) — llamar a `navigateNext()` acá
+        // avanzaría UN step de más sobre ese salto. Un scenario roto no se
+        // sigue recorriendo step a step.
+        onSessionUpdate(resultResponse.session, resultResponse.currentStep);
+      } else {
+        // Avanza automáticamente al siguiente step tras marcar un resultado
+        // (ARCHITECTURE.md, "UX del runner").
+        const navigateResponse = await api.navigateNext();
+        onSessionUpdate(navigateResponse.session, navigateResponse.currentStep);
+      }
     } catch (error) {
       onError(error as ApiRequestError);
     } finally {
@@ -358,103 +366,109 @@ export function Runner({
 
         <section class="panel report-panel">
           <h3>Reporte</h3>
-          <div class="report-panel__actions">
-            <button
-              type="button"
-              class="button button--primary"
-              onClick={() => void handleGenerateReport()}
-              disabled={busy}
-            >
-              Generar reporte
-            </button>
-            {reportUrl && (
-              <>
-                <a class="button" href={reportUrl} target="_blank" rel="noreferrer">
-                  Ver reporte
-                </a>
-                <a
-                  class="button button--cta"
-                  href="/api/report/export-zip"
-                  download="qa-report.zip"
-                >
-                  Exportar como ZIP
-                </a>
-              </>
-            )}
-            {reportUrl && jiraEnabled && (
-              <>
-                <input
-                  type="text"
-                  class="field__input"
-                  style={{ maxWidth: '10rem' }}
-                  placeholder="Clave del issue (ej. QA-123)"
-                  value={jiraIssueKey}
-                  onInput={(event) => setJiraIssueKey((event.target as HTMLInputElement).value)}
-                  disabled={busy}
-                  aria-label="Clave del issue de Jira"
-                />
+          <div class="report-panel__body">
+            <div class="report-panel__rows">
+              <div class="report-panel__row">
                 <button
                   type="button"
-                  class="button"
-                  onClick={() => void handlePublishToJira()}
-                  disabled={busy || jiraIssueKey.trim().length === 0}
-                >
-                  Adjuntar a Jira
-                </button>
-                {jiraPublishedUrl && (
-                  <a
-                    class="button button--cta"
-                    href={jiraPublishedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Ver issue en Jira
-                  </a>
-                )}
-              </>
-            )}
-            {reportUrl && azureDevOpsEnabled && (
-              <>
-                <input
-                  type="text"
-                  class="field__input"
-                  style={{ maxWidth: '10rem' }}
-                  placeholder="Work item (ej. 123)"
-                  value={azureDevOpsWorkItemId}
-                  onInput={(event) =>
-                    setAzureDevOpsWorkItemId((event.target as HTMLInputElement).value)
-                  }
+                  class="button button--primary"
+                  onClick={() => void handleGenerateReport()}
                   disabled={busy}
-                  aria-label="ID del work item de Azure DevOps"
-                />
-                <button
-                  type="button"
-                  class="button"
-                  onClick={() => void handlePublishToAzureDevOps()}
-                  disabled={busy || !azureDevOpsWorkItemIdValid}
                 >
-                  Adjuntar a Azure DevOps
+                  Generar reporte
                 </button>
-                {azureDevOpsPublishedUrl && (
-                  <a
-                    class="button button--cta"
-                    href={azureDevOpsPublishedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Ver work item en Azure DevOps
-                  </a>
+                {reportUrl && (
+                  <>
+                    <a class="button" href={reportUrl} target="_blank" rel="noreferrer">
+                      Ver reporte
+                    </a>
+                    <a
+                      class="button button--cta"
+                      href="/api/report/export-zip"
+                      download="qa-report.zip"
+                    >
+                      Exportar como ZIP
+                    </a>
+                  </>
                 )}
-              </>
-            )}
-            <button
-              type="button"
-              class="button button--danger-outline"
-              onClick={() => void handleCloseSession()}
-              disabled={busy}
-            >
-              Cerrar sesión
-            </button>
+              </div>
+              {reportUrl && jiraEnabled && (
+                <div class="report-panel__row">
+                  <input
+                    type="text"
+                    class="field__input"
+                    style={{ maxWidth: '10rem' }}
+                    placeholder="Clave del issue (ej. QA-123)"
+                    value={jiraIssueKey}
+                    onInput={(event) => setJiraIssueKey((event.target as HTMLInputElement).value)}
+                    disabled={busy}
+                    aria-label="Clave del issue de Jira"
+                  />
+                  <button
+                    type="button"
+                    class="button"
+                    onClick={() => void handlePublishToJira()}
+                    disabled={busy || jiraIssueKey.trim().length === 0}
+                  >
+                    Adjuntar a Jira
+                  </button>
+                  {jiraPublishedUrl && (
+                    <a
+                      class="button button--cta"
+                      href={jiraPublishedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver issue en Jira
+                    </a>
+                  )}
+                </div>
+              )}
+              {reportUrl && azureDevOpsEnabled && (
+                <div class="report-panel__row">
+                  <input
+                    type="text"
+                    class="field__input"
+                    style={{ maxWidth: '10rem' }}
+                    placeholder="Work item (ej. 123)"
+                    value={azureDevOpsWorkItemId}
+                    onInput={(event) =>
+                      setAzureDevOpsWorkItemId((event.target as HTMLInputElement).value)
+                    }
+                    disabled={busy}
+                    aria-label="ID del work item de Azure DevOps"
+                  />
+                  <button
+                    type="button"
+                    class="button"
+                    onClick={() => void handlePublishToAzureDevOps()}
+                    disabled={busy || !azureDevOpsWorkItemIdValid}
+                  >
+                    Adjuntar a Azure DevOps
+                  </button>
+                  {azureDevOpsPublishedUrl && (
+                    <a
+                      class="button button--cta"
+                      href={azureDevOpsPublishedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver work item en Azure DevOps
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+            <div class="report-panel__close">
+              <button
+                type="button"
+                class="button button--danger-outline"
+                onClick={() => void handleCloseSession()}
+                disabled={busy}
+              >
+                Cerrar sesión
+              </button>
+            </div>
           </div>
         </section>
       </div>

@@ -132,18 +132,29 @@ async function runSimulation(url, workDir) {
         'comportamiento inesperado detectado durante la sesión de ejemplo ' +
         '(dato generado por simulate-session.mjs, no un bug real).';
     }
-    await fetchJson(`${url}/api/session/step/${stepId}/result`, {
+    const resultResponse = await fetchJson(`${url}/api/session/step/${stepId}/result`, {
       method: 'POST',
       body: resultBody,
     });
     tally[result] += 1;
 
-    const navigateResponse = await fetchJson(`${url}/api/session/navigate`, {
-      method: 'POST',
-      body: { direction: 'next' },
-    });
-    session = navigateResponse.session;
-    currentStep = navigateResponse.currentStep;
+    if (result === 'fail') {
+      // "Fail" ya cascadea el resto del scenario y salta la posición
+      // actual directo al siguiente scenario dentro de esta misma request
+      // (ver sessionEngine.setStepResult) — llamar a /navigate acá
+      // avanzaría un step de más sobre ese salto y dejaría el primer step
+      // del scenario siguiente sin visitar (¡"completed" con steps en
+      // 'pending'!). Mismo criterio que el cliente real (Runner.tsx).
+      session = resultResponse.session;
+      currentStep = resultResponse.currentStep;
+    } else {
+      const navigateResponse = await fetchJson(`${url}/api/session/navigate`, {
+        method: 'POST',
+        body: { direction: 'next' },
+      });
+      session = navigateResponse.session;
+      currentStep = navigateResponse.currentStep;
+    }
   }
 
   console.log(

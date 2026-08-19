@@ -12,10 +12,17 @@
   cambia con `#each`, pero adentro del `{{#each failedScenarios}}` de ESTE
   archivo sí hace falta `../` para volver a alcanzarlo).
 
-  `.qa-failed-list` tiene `max-height` + `overflow-y: auto` siempre (no solo
-  con muchos ítems): con pocos no se nota, con varios evita que esta card
-  crezca sin límite y desacomode el resto del dashboard — se ve TODO,
-  scrolleando adentro de una altura fija, nunca truncado/escondido.
+  Mismo lenguaje visual que los 4 chips de `partials/legend.hbs`
+  (`.qa-stat`): tarjeta tono-sobre-tono del color de fallo, no una lista
+  plana — a pedido explícito de "cards de forma horizontal... tal como los
+  cards de aprobado fallido omitidos". A diferencia de esos 4 chips (que
+  son SIEMPRE 2x2, cantidad fija conocida), acá la cantidad de fallos es
+  variable (1 a N), así que el contenedor usa `flex-wrap` en vez de un grid
+  de columnas fijas: las cards fluyen horizontalmente y arman una fila
+  nueva recién cuando ya no entran más en la actual. `max-height` +
+  `overflow-y: auto` siempre (no solo con muchos ítems) evita que la card
+  crezca sin límite y desacomode el resto del dashboard sin importar si hay
+  1 fallo o 20 — se ve TODO, scrolleando adentro de una altura fija.
 --}}
 <section class="qa-card qa-card--failed-scenarios" aria-labelledby="qa-failed-scenarios-heading">
   <h2 id="qa-failed-scenarios-heading" class="qa-section-heading qa-section-heading--fail">
@@ -23,15 +30,15 @@
       failedScenarios.length
     }}
   </h2>
-  <ul class="qa-failed-list">
+  <ul class="qa-failed-cards">
     {{#each failedScenarios}}
-      <li class="qa-failed-list__item qa-rail qa-rail--fail">
-        <a class="qa-failed-list__link" href="{{../basePath}}{{href}}">
-          <span class="qa-failed-list__names">
-            <span class="qa-failed-list__feature">{{featureName}}</span>
-            <span class="qa-failed-list__scenario">{{scenarioName}}</span>
+      <li class="qa-failed-card">
+        <a class="qa-failed-card__link" href="{{../basePath}}{{href}}">
+          <span class="qa-failed-card__icon" aria-hidden="true">{{> icon-x}}</span>
+          <span class="qa-failed-card__names">
+            <span class="qa-failed-card__feature">{{featureName}}</span>
+            <span class="qa-failed-card__scenario">{{scenarioName}}</span>
           </span>
-          {{> chevron-right}}
         </a>
       </li>
     {{/each}}

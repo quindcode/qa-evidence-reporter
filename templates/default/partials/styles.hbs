@@ -498,31 +498,6 @@
     max-width: 28ch;
   }
 
-  /* Salta directo al primer scenario fallido DE ESTE FEATURE (ver
-     `firstFailedScenarioId` en reportGenerator.ts, usado solo por
-     feature-detail.hbs) en vez de depender solo de scroll + rail-scanning
-     — no aparece si no hay ningún fallo. El dashboard (`index.hbs`) ya NO
-     usa esta clase: lista TODOS los fallos de la sesión en vez de un
-     único link al primero, ver `partials/failed-scenarios.hbs`. */
-  .qa-jump-to-failure {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 12px;
-    padding: 6px 13px;
-    border-radius: 999px;
-    border: 1px solid var(--qa-fail-on-tint);
-    background: var(--qa-fail-bg);
-    color: var(--qa-fail-on-tint);
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-decoration: none;
-  }
-
-  .qa-jump-to-failure:hover {
-    filter: brightness(1.05);
-  }
-
   /* Sección "N scenarios fallidos" del dashboard (ver
      partials/failed-scenarios.hbs) — lista TODOS los fallos de la sesión,
      nunca solo el primero. */
@@ -533,37 +508,42 @@
     color: var(--qa-fail-on-tint);
   }
 
-  .qa-failed-list {
+  /* Cards horizontales (mismo lenguaje tono-sobre-tono que `.qa-stat`, ver
+     partials/legend.hbs) que fluyen en fila y arman una fila nueva recién
+     cuando ya no entran más en la actual — a diferencia de `.qa-stats`
+     (grid 2x2 fijo: la cantidad de chips SIEMPRE es 4), acá la cantidad de
+     fallos es variable, así que `flex-wrap` es lo que corresponde. */
+  .qa-failed-cards {
     list-style: none;
     margin: 0;
     padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     /* Con pocos ítems no se nota; con varios, esta card nunca crece sin
        límite — se ve TODO scrolleando adentro de una altura fija, en vez
        de truncado/escondido (ver JSDoc de failed-scenarios.hbs). */
     max-height: 320px;
     overflow-y: auto;
-    /* Sin esto, el sangrado negativo de `.qa-failed-list__link` (necesario
-       para que el hover pinte hasta el borde de la card) dispara un
-       scrollbar horizontal fantasma: al fijar overflow-y, el eje X pasa de
-       'visible' a 'auto' implícitamente si no se lo fija explícito. */
-    overflow-x: hidden;
   }
 
-  .qa-failed-list__item + .qa-failed-list__item {
-    border-top: 1px solid var(--qa-border);
+  .qa-failed-card {
+    flex: 1 1 240px;
+    max-width: 320px;
   }
 
-  .qa-failed-list__link {
+  .qa-failed-card__link {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 14px 18px;
-    margin: 0 -18px;
+    gap: 12px;
+    height: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--qa-fail-on-tint) 28%, transparent);
+    background: var(--qa-fail-bg);
+    color: var(--qa-fail-on-tint);
     text-decoration: none;
-    color: inherit;
-    border-radius: 8px;
     transition:
-      background-color 0.18s ease,
       transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
       box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -572,36 +552,53 @@
      la Elevación en Hover, DESIGN.md) — navega al scenario real, así que
      lleva la sombra teñida completa (translateY + box-shadow), no la
      variante puramente táctil de `.qa-stat`. */
-  .qa-failed-list__link:hover {
-    background: var(--qa-bg);
+  .qa-failed-card__link:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--qa-fail-on-tint) 35%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .qa-failed-list__link:hover {
+    .qa-failed-card__link:hover {
       transform: none;
     }
   }
 
-  .qa-failed-list__names {
+  .qa-failed-card__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--qa-fail-on-tint) 14%, transparent);
+  }
+
+  .qa-failed-card__icon .qa-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .qa-failed-card__names {
     display: flex;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
-    flex: 1;
   }
 
-  .qa-failed-list__feature {
-    font-size: 0.78rem;
+  .qa-failed-card__feature {
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--qa-fg-muted);
+    opacity: 0.75;
   }
 
-  .qa-failed-list__scenario {
+  .qa-failed-card__scenario {
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .qa-hero__chart {
@@ -1051,9 +1048,10 @@
     border-radius: 16px;
     padding: 22px 24px;
     margin-bottom: 20px;
-    /* Espacio de respiro al llegar por el link "Ver primer fallo"
-       (`.qa-jump-to-failure`) — sin esto, el scenario queda pegado al
-       borde superior del viewport. */
+    /* Espacio de respiro al llegar por un link de "N scenarios fallidos"
+       del dashboard (`partials/failed-scenarios.hbs`, ancla
+       `#scenario-...`) — sin esto, el scenario queda pegado al borde
+       superior del viewport. */
     scroll-margin-top: 20px;
     /* Ver `.qa-step::before`: numera los steps dentro de ESTE scenario. */
     counter-reset: qa-step;

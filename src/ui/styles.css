@@ -745,10 +745,36 @@ body {
   gap: 0.75rem;
 }
 
-.report-panel__actions {
+/* Cuerpo del panel de reporte: filas de acciones a la izquierda (generar/ver/
+   exportar arriba, luego Jira, luego Azure DevOps, cada una en su propio
+   renglón) y "Cerrar sesión" a la derecha, centrado verticalmente respecto
+   a todas las filas. */
+.report-panel__body {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.report-panel__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.report-panel__row {
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.report-panel__close {
+  display: flex;
+  align-items: center;
 }
 
 /* Árbol lateral */

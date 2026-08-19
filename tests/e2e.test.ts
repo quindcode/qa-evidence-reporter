@@ -150,21 +150,45 @@ describe('e2e: sample-project de punta a punta (parser real + server real + repo
       }
       if (result === 'skip') sawSkip = true;
 
-      await request(app).post(`/api/session/step/${stepId}/result`).send(body).expect(200);
-
-      const navigateResponse = await request(app)
-        .post('/api/session/navigate')
-        .send({ direction: 'next' })
+      const resultResponse = await request(app)
+        .post(`/api/session/step/${stepId}/result`)
+        .send(body)
         .expect(200);
-      session = navigateResponse.body.session;
-      currentStep = navigateResponse.body.currentStep;
+
+      if (result === 'fail') {
+        // "Fail" cascadea el resto del scenario y salta la posición actual
+        // directo al siguiente scenario dentro de esta misma request (ver
+        // `sessionEngine.setStepResult`) — replica el comportamiento real
+        // del cliente (`Runner.tsx`): no llama a `/navigate` de nuevo, o
+        // avanzaría un step de más sobre ese salto.
+        session = resultResponse.body.session;
+        currentStep = resultResponse.body.currentStep;
+      } else {
+        const navigateResponse = await request(app)
+          .post('/api/session/navigate')
+          .send({ direction: 'next' })
+          .expect(200);
+        session = navigateResponse.body.session;
+        currentStep = navigateResponse.body.currentStep;
+      }
     }
 
     expect(sawFail).toBe(true);
     expect(sawSkip).toBe(true);
     expect(session.status).toBe('completed');
-    // Los 52 steps reales del sample-project (login: 13, busqueda: 17, carrito: 22).
-    expect(stepCount).toBe(52);
+    // Ya no se puede afirmar un número fijo de iteraciones: cada "fail" se
+    // salta el resto de su scenario (varios steps reales) de un solo
+    // salto, así que `stepCount` (acciones manuales) es menor que el total
+    // real de steps del sample-project y depende de en qué steps cayeron
+    // los fallos. Lo que sí debe cumplirse siempre: ningún step de la
+    // sesión queda 'pending' al terminar (todos los 52 steps reales del
+    // sample-project — login: 13, busqueda: 17, carrito: 22 — terminan con
+    // un resultado real, ya sea puesto a mano o cascadeado).
+    const allSteps = session.selectedFeatures.flatMap((feature: { scenarios: Array<{ steps: Array<{ result: string }> }> }) =>
+      feature.scenarios.flatMap((scenario) => scenario.steps),
+    );
+    expect(allSteps).toHaveLength(52);
+    expect(allSteps.every((step) => step.result !== 'pending')).toBe(true);
 
     // 5. Navegación hacia atrás también funciona sobre una sesión completada.
     const previousResponse = await request(app)

@@ -193,7 +193,7 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     expect(indexHtml).not.toContain('Checkout');
   });
 
-  it('el dashboard lista el scenario fallido (feature + scenario + link), y el detalle de feature ofrece su propio "Ver primer fallo"', async () => {
+  it('el dashboard lista el scenario fallido (feature + scenario + link); el detalle de feature ya NO repite ninguna alerta de "Ver primer fallo"', async () => {
     const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
     const generator = createReportGenerator(
       { projectName: 'Proyecto Demo', evidenceBaseDir },
@@ -208,31 +208,26 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     const expectedAnchor = `scenario-${checkoutScenarioId}`;
 
     const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
-    // El dashboard ya NO usa un único link "Ver primer fallo" — lista TODOS
-    // los scenarios fallidos citando feature + scenario (ver
-    // partials/failed-scenarios.hbs).
+    // El dashboard lista TODOS los scenarios fallidos citando feature +
+    // scenario (ver partials/failed-scenarios.hbs) — nunca un único link.
     expect(indexHtml).toContain('1 scenario fallido');
     expect(indexHtml).toContain('Checkout');
     expect(indexHtml).toContain('Pay with card');
     expect(indexHtml).toContain(`href="features/f1-checkout.html#${expectedAnchor}"`);
 
+    // El detalle de feature ya NO tiene su propia alerta "Ver primer
+    // fallo" debajo de la métrica — a pedido explícito de feedback, quedaba
+    // redundante con la lista del dashboard. `id="scenario-..."` sigue
+    // existiendo (es el ancla a la que apunta el link del dashboard), pero
+    // ni el botón ni su wiring JS deben aparecer en ningún feature.
     const checkoutHtml = await readFile(join(outputDir, 'features', 'f1-checkout.html'), 'utf-8');
     expect(checkoutHtml).toContain(`id="${expectedAnchor}"`);
-    // En la página de detalle, "Ver primer fallo" es un <button> (no un
-    // <a href="#...">) — necesita disparar JS que además EXPANDA el
-    // scenario/step antes de scrollear (ver accordion-script.hbs), algo
-    // que un link de solo-navegación no puede hacer. `class="..."` con
-    // comillas (no el nombre de clase suelto): esa cadena EXACTA solo
-    // aparece en el atributo del botón, nunca en el selector CSS del
-    // `<style>` embebido (`.qa-jump-to-failure { ... }`, sin comillas) ni
-    // en `accordion-script.hbs` (que solo referencia el atributo
-    // `data-jump-to-first-failure`, no esta clase).
-    expect(checkoutHtml).toContain(`class="qa-jump-to-failure"`);
-    expect(checkoutHtml).toContain(`data-target-scenario-id="${expectedAnchor}"`);
+    expect(checkoutHtml).not.toContain('qa-jump-to-failure');
+    expect(checkoutHtml).not.toContain('Ver primer fallo');
 
-    // Login no tiene ningún fallo -> sin botón "Ver primer fallo" en su página.
     const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
-    expect(loginHtml).not.toContain(`class="qa-jump-to-failure"`);
+    expect(loginHtml).not.toContain('qa-jump-to-failure');
+    expect(loginHtml).not.toContain('Ver primer fallo');
   });
 
   it('el dashboard lista TODOS los scenarios fallidos cuando hay más de uno (no solo el primero)', async () => {
@@ -301,7 +296,7 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
 
     const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
     // Nota: no se puede buscar substrings como "scenario fallido" o la clase
-    // suelta "qa-failed-list" — `styles.hbs` (compartido por todas las
+    // suelta "qa-failed-cards" — `styles.hbs` (compartido por todas las
     // páginas) define esas reglas CSS y ese comentario incondicionalmente,
     // se use o no la sección en esta página en particular. Se verifica en
     // cambio que el HEADING/ID de la sección renderizada no aparezca.

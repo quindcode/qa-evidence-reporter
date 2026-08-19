@@ -91,16 +91,6 @@ export interface FeatureReportView {
   scenarios: ScenarioReportView[];
   /** Ruta relativa a la raíz de `outputDir` de la página de detalle de este feature, p. ej. `"features/f0-login.html"`. */
   detailPath: string;
-  /**
-   * `id` (ver `ScenarioReportView.id`) del primer scenario con
-   * `result === 'fail'` de este feature, o `undefined` si ninguno falló.
-   * Cada `<section class="qa-scenario">` del template lleva
-   * `id="scenario-{{id}}"` (ver `feature-detail.hbs`) — este campo es el
-   * target de un link "Ver primer fallo" en el hero, para no depender de
-   * scroll+rail-scanning en un feature con muchos scenarios (ver
-   * `/impeccable critique` del reporte, Priority Issue P2).
-   */
-  firstFailedScenarioId?: string;
 }
 
 /** Metadata de proyecto para el encabezado del reporte. */

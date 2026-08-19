@@ -157,6 +157,8 @@ export function createSessionEngine(
     const current = requireState();
     const step = findStep(current, stepId);
 
+    let failedScenarioPosition: SessionPosition | undefined;
+
     if (result === 'fail') {
       const defectDescription = options.defectDescription?.trim();
       if (!defectDescription) {
@@ -165,6 +167,26 @@ export function createSessionEngine(
         );
       }
       step.defectDescription = defectDescription;
+
+      // Igual que "skip" (ver más abajo), un scenario fallido queda
+      // considerado fallido COMPLETO, no solo el step donde se detectó el
+      // defecto — seguir recorriendo el resto de sus steps para marcarlos
+      // pass/pending sería inconsistente, dado que el caso ya está roto.
+      // Además, a diferencia de "skip", "fail" también salta directo al
+      // siguiente SCENARIO (no al siguiente step) — no tiene sentido seguir
+      // step a step un caso que ya sabemos que falló.
+      const scenario = findScenarioContainingStep(current, stepId);
+      const failedAt = clock();
+      for (const sibling of scenario.steps) {
+        if (sibling.id === stepId) continue;
+        sibling.result = 'fail';
+        sibling.defectDescription = defectDescription;
+        sibling.timestamps = {
+          startedAt: sibling.timestamps.startedAt ?? failedAt,
+          completedAt: failedAt,
+        };
+      }
+      failedScenarioPosition = findPositionOfStep(current, stepId);
     } else {
       step.defectDescription = undefined;
     }
@@ -200,6 +222,17 @@ export function createSessionEngine(
           startedAt: sibling.timestamps.startedAt ?? skippedAt,
           completedAt: skippedAt,
         };
+      }
+    }
+
+    if (failedScenarioPosition) {
+      const next = firstPositionAfterScenario(current, failedScenarioPosition);
+      if (next) {
+        current.currentPosition = next;
+      } else {
+        // Era el último scenario de la sesión: no hay a dónde saltar, mismo
+        // criterio que `next()` al llegar al final.
+        current.status = 'completed';
       }
     }
 
@@ -340,6 +373,45 @@ function adjacentPosition(
   const currentIndex = positions.findIndex((candidate) => positionsEqual(candidate, position));
   if (currentIndex === -1) return null;
   return positions[currentIndex + direction] ?? null;
+}
+
+/**
+ * La primera posición (en orden de ejecución) que ya NO pertenece al mismo
+ * scenario que `position` — es decir, el primer step del scenario
+ * siguiente, cruzando el límite de feature si hace falta. `null` si
+ * `position` era el último scenario de la sesión. La usa la cascada de
+ * "fail" de `setStepResult` para saltar directo al próximo scenario en vez
+ * de seguir recorriendo, step a step, un caso que ya se sabe que falló.
+ */
+function firstPositionAfterScenario(
+  state: SessionState,
+  position: SessionPosition,
+): SessionPosition | null {
+  const positions = flattenPositions(state);
+  const currentIndex = positions.findIndex((candidate) => positionsEqual(candidate, position));
+  if (currentIndex === -1) return null;
+
+  for (let i = currentIndex + 1; i < positions.length; i += 1) {
+    const candidate = positions[i]!;
+    if (
+      candidate.featureIndex !== position.featureIndex ||
+      candidate.scenarioIndex !== position.scenarioIndex
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/** Posición (`featureIndex`/`scenarioIndex`/`stepIndex`) del step `stepId` — reconstruida por índice en vez de solo por id, ya que la cascada de "fail" necesita cruzar límites de scenario/feature en términos de índices numéricos (ver `firstPositionAfterScenario`). */
+function findPositionOfStep(state: SessionState, stepId: string): SessionPosition {
+  for (const [featureIndex, feature] of state.selectedFeatures.entries()) {
+    for (const [scenarioIndex, scenario] of feature.scenarios.entries()) {
+      const stepIndex = scenario.steps.findIndex((candidate) => candidate.id === stepId);
+      if (stepIndex !== -1) return { featureIndex, scenarioIndex, stepIndex };
+    }
+  }
+  throw new InvalidStepTransitionError(`no existe un step con id "${stepId}" en la sesión actual.`);
 }
 
 function positionsEqual(a: SessionPosition, b: SessionPosition): boolean {

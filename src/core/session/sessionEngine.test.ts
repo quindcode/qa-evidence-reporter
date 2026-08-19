@@ -359,6 +359,63 @@ describe('createSessionEngine', () => {
 
       expect(otherScenarioSteps.every((step) => step.result === 'pending')).toBe(true);
     });
+
+    it('marcar un step como fail cascada a TODOS los steps del scenario con el MISMO defecto, y no se filtra a otros scenarios', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      const [firstStepId, secondStepId] =
+        engine.getState().selectedFeatures[0].scenarios[0].steps.map((step) => step.id);
+
+      await engine.setStepResult(firstStepId, 'pass');
+      const state = await engine.setStepResult(secondStepId, 'fail', {
+        defectDescription: 'Botón roto',
+      });
+      const steps = state.selectedFeatures[0].scenarios[0].steps;
+
+      // Un scenario roto queda roto COMPLETO — inclusive el step que ya
+      // estaba en pass antes del fail, y el tercero que ni se había
+      // ejecutado.
+      expect(steps.map((step) => step.result)).toEqual(['fail', 'fail', 'fail']);
+      expect(steps.every((step) => step.defectDescription === 'Botón roto')).toBe(true);
+      expect(steps.every((step) => step.timestamps.completedAt)).toBe(true);
+
+      const otherScenarioSteps = state.selectedFeatures[0].scenarios[1].steps;
+      expect(otherScenarioSteps.every((step) => step.result === 'pending')).toBe(true);
+    });
+
+    it('fail salta currentPosition directo al primer step del SIGUIENTE scenario, sin recorrer el resto del actual', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      // Falla el PRIMER step de "Successful login" (scenario 0 de "Login"):
+      // según la cascada, los otros dos steps de ese scenario deberían
+      // marcarse fail sin necesidad de visitarlos, y la sesión debería
+      // saltar directo al scenario "Failed login" (scenario 1).
+      const firstStepId = engine.getState().selectedFeatures[0].scenarios[0].steps[0].id;
+
+      const state = await engine.setStepResult(firstStepId, 'fail', {
+        defectDescription: 'Pantalla en blanco',
+      });
+
+      expect(state.currentPosition).toEqual({ featureIndex: 0, scenarioIndex: 1, stepIndex: 0 });
+      expect(engine.getCurrentStep()?.scenarioId).toBe(
+        state.selectedFeatures[0].scenarios[1].id,
+      );
+    });
+
+    it('fail en el ÚLTIMO scenario de la sesión la marca "completed" (no hay a dónde saltar)', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      // Único scenario de "Logout", la última feature — no hay ningún
+      // scenario después al cual saltar.
+      const lastScenarioStepId =
+        engine.getState().selectedFeatures[1].scenarios[0].steps[0].id;
+
+      const state = await engine.setStepResult(lastScenarioStepId, 'fail', {
+        defectDescription: 'Sesión no cierra',
+      });
+
+      expect(state.status).toBe('completed');
+    });
   });
 
   describe('evidencia y notas', () => {

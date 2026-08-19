@@ -340,7 +340,6 @@ function toFeatureView(
     summary: buildResultSummary(counts),
     scenarios,
     detailPath: `features/${feature.id}.html`,
-    firstFailedScenarioId: scenarios.find((scenario) => scenario.result === 'fail')?.id,
   };
 }
 

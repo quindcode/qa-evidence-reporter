@@ -18,7 +18,6 @@
   1. Corrige el estado inicial si `sessionStorage` tiene guardado algo
      DISTINTO del default que el server ya renderizó (sin animar).
   2. Encadena los toggles de click (con animación).
-  3. Maneja "Ver primer fallo".
 
   Persistencia en `sessionStorage` (no `localStorage`: es estado de ESTA
   sesión de lectura, no algo que deba sobrevivir a cerrar el navegador),
@@ -104,38 +103,5 @@
         if (stepToggle && stepBody) wireDisclosure(stepToggle, stepBody, stepEl.id);
       });
     });
-
-    var jumpButton = document.querySelector('[data-jump-to-first-failure]');
-    if (jumpButton) {
-      jumpButton.addEventListener('click', function () {
-        var scenarioEl = document.getElementById(jumpButton.getAttribute('data-target-scenario-id'));
-        if (!scenarioEl) return;
-
-        var scenarioToggle = scenarioEl.querySelector('[data-scenario-toggle]');
-        var scenarioBody = scenarioEl.querySelector('[data-scenario-body]');
-        if (scenarioToggle && scenarioBody && scenarioToggle.getAttribute('aria-expanded') !== 'true') {
-          setOpen(scenarioToggle, scenarioBody, true, true);
-          state[scenarioEl.id] = true;
-        }
-
-        var firstFailedStep = scenarioEl.querySelector('[data-step][data-result="fail"]');
-        if (firstFailedStep) {
-          var stepToggle = firstFailedStep.querySelector('[data-step-toggle]');
-          var stepBody = firstFailedStep.querySelector('[data-step-body]');
-          if (stepToggle && stepBody && stepToggle.getAttribute('aria-expanded') !== 'true') {
-            setOpen(stepToggle, stepBody, true, true);
-            state[firstFailedStep.id] = true;
-          }
-        }
-        persist();
-
-        // Un frame de margen para que el layout ya haya reflowed tras abrir
-        // el scenario/step ANTES de calcular a dónde hay que scrollear —
-        // si no, `scrollIntoView` puede apuntar a una posición vieja.
-        requestAnimationFrame(function () {
-          scenarioEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      });
-    }
   })();
 </script>
