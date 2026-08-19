@@ -7,7 +7,6 @@ import {
   AzureDevOpsWorkItemNotFoundError,
 } from '../types/errors.js';
 import { createAzureDevOpsClient } from './azureDevOpsClient.js';
-import { QA_SUMMARY_COMMENT_MARKER } from './commentBuilder.js';
 
 const VALID_CONFIG = {
   organizationUrl: 'https://dev.azure.com/tuorg',
@@ -30,9 +29,6 @@ function fakeResponse(init: {
 }
 
 const EXPECTED_AUTH_HEADER = `Basic ${Buffer.from(':un-pat-de-prueba').toString('base64')}`;
-
-/** Sin comentarios previos: el `GET` de chequeo de duplicados (`addComment`) no encuentra nada que borrar. */
-const NO_EXISTING_COMMENTS = fakeResponse({ ok: true, status: 200, json: { comments: [] } });
 
 describe('createAzureDevOpsClient', () => {
   describe('attachReport', () => {
@@ -270,16 +266,13 @@ describe('createAzureDevOpsClient', () => {
 
   describe('addComment', () => {
     it('postea el comentario a la URL/headers/body correctos de la API de comentarios', async () => {
-      const fetchImpl = vi
-        .fn()
-        .mockResolvedValueOnce(NO_EXISTING_COMMENTS)
-        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200 }));
+      const fetchImpl = vi.fn().mockResolvedValue(fakeResponse({ ok: true, status: 200 }));
       const client = createAzureDevOpsClient(VALID_CONFIG, { fetchImpl });
 
       await client.addComment(123, '<h3>Resumen</h3>');
 
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
-      const [url, init] = fetchImpl.mock.calls[1] as [string, RequestInit];
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(
         'https://dev.azure.com/tuorg/Checkout/_apis/wit/workItems/123/comments?api-version=7.1-preview.4',
       );
@@ -291,41 +284,18 @@ describe('createAzureDevOpsClient', () => {
       expect(JSON.parse(init.body as string)).toEqual({ text: '<h3>Resumen</h3>' });
     });
 
-    it('antes de postear, borra los comentarios previos que llevan el marcador de la herramienta', async () => {
-      const markedComment = { id: 555, text: `<p>Resumen viejo</p><p><em>${QA_SUMMARY_COMMENT_MARKER}</em></p>` };
-      const humanComment = { id: 556, text: '<p>Ya lo revisé, todo bien.</p>' };
-      const fetchImpl = vi
-        .fn()
-        .mockResolvedValueOnce(
-          fakeResponse({ ok: true, status: 200, json: { comments: [markedComment, humanComment] } }),
-        )
-        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200 })) // DELETE del comentario marcado
-        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200 })); // POST del comentario nuevo
+    it('publicar varias veces sobre el mismo work item NO borra los comentarios anteriores (trazabilidad)', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(fakeResponse({ ok: true, status: 200 }));
       const client = createAzureDevOpsClient(VALID_CONFIG, { fetchImpl });
 
-      await client.addComment(123, '<h3>Resumen nuevo</h3>');
+      await client.addComment(123, '<h3>Resumen</h3>');
+      await client.addComment(123, '<h3>Resumen</h3>');
 
-      expect(fetchImpl).toHaveBeenCalledTimes(3);
-      const [deleteUrl, deleteInit] = fetchImpl.mock.calls[1] as [string, RequestInit];
-      expect(deleteUrl).toBe(
-        'https://dev.azure.com/tuorg/Checkout/_apis/wit/workItems/123/comments/555?api-version=7.1-preview.4',
+      // Dos publicaciones -> dos POST, ningún GET/DELETE de por medio.
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl.mock.calls.every(([, init]) => (init as RequestInit).method === 'POST')).toBe(
+        true,
       );
-      expect(deleteInit.method).toBe('DELETE');
-      // El comentario humano (sin el marcador) nunca se toca — solo 1 DELETE, no 2.
-      expect(fetchImpl.mock.calls[2][1]).toMatchObject({ method: 'POST' });
-    });
-
-    it('un fallo al borrar un comentario marcado no bloquea la publicación del nuevo (best-effort)', async () => {
-      const markedComment = { id: 555, text: `<p><em>${QA_SUMMARY_COMMENT_MARKER}</em></p>` };
-      const fetchImpl = vi
-        .fn()
-        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, json: { comments: [markedComment] } }))
-        .mockRejectedValueOnce(new Error('permisos insuficientes')) // DELETE falla
-        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200 })); // POST igual se intenta
-      const client = createAzureDevOpsClient(VALID_CONFIG, { fetchImpl });
-
-      await expect(client.addComment(123, '<h3>Resumen</h3>')).resolves.toBeUndefined();
-      expect(fetchImpl).toHaveBeenCalledTimes(3);
     });
 
     it('lanza AzureDevOpsAuthenticationError en 403', async () => {
