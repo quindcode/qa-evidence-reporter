@@ -243,6 +243,26 @@ body {
   color: var(--text-muted);
 }
 
+/* Recuadro de "consejo" (a diferencia de `.settings-panel__section` a
+   secas, que agrupa un formulario): mismo borde/radio para no inventar un
+   segundo lenguaje visual, pero con acento tenue de `--accent` para
+   distinguirlo como informativo, no editable. */
+.settings-panel__section--tip {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.settings-panel__command {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .settings-panel__actions {
   display: flex;
   gap: 0.75rem;

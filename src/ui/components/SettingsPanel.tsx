@@ -283,6 +283,20 @@ export function SettingsPanel({
           )}
         </div>
       </div>
+
+      <div class="settings-panel__section settings-panel__section--tip">
+        <h3>💡 ¿Querés que el token te dure entre reinicios?</h3>
+        <p class="settings-panel__hint">
+          Lo que pegás acá arriba solo dura mientras este servidor siga corriendo — al volver a
+          correr <code>qa-reporter run</code> hay que pegarlo de nuevo. Si preferís que no se
+          pierda, exportá la variable de entorno correspondiente en la terminal ANTES de correr{' '}
+          <code>qa-reporter run</code>:
+        </p>
+        <code class="settings-panel__command">export JIRA_API_TOKEN=&quot;tu-token-de-api&quot;</code>
+        <code class="settings-panel__command">
+          export AZURE_DEVOPS_PAT=&quot;tu-personal-access-token&quot;
+        </code>
+      </div>
     </div>
   );
 }
