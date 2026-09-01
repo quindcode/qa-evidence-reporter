@@ -154,6 +154,45 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     }
   });
 
+  it('con `options.featureIds`, solo incluye esa feature en el reporte (dashboard, detalle y summary recalculado)', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+
+    const loginFeatureId = sessionState.selectedFeatures[0]!.id;
+    await generator.generate(sessionState, outputDir, { featureIds: [loginFeatureId] });
+
+    // Solo se generó la página de detalle de Login — Checkout ni siquiera
+    // se escribe a disco.
+    expect(existsSync(join(outputDir, 'features', 'f0-login.html'))).toBe(true);
+    expect(existsSync(join(outputDir, 'features', 'f1-checkout.html'))).toBe(false);
+
+    const indexHtml = await readFile(join(outputDir, 'index.html'), 'utf-8');
+    expect(indexHtml).toContain('Login');
+    expect(indexHtml).not.toContain('Checkout');
+    // El único fallo de `sessionState` (beforeEach) está en Checkout — al
+    // quedar fuera del scope, el resumen global ya no debe listar ningún
+    // scenario fallido.
+    expect(indexHtml).not.toContain('scenario fallido');
+  });
+
+  it('con `options.featureIds` vacío o sin coincidencias, el reporte queda sin features (comportamiento definido, no un error)', async () => {
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+
+    await generator.generate(sessionState, outputDir, { featureIds: ['no-existe'] });
+
+    expect(existsSync(join(outputDir, 'features', 'f0-login.html'))).toBe(false);
+    expect(existsSync(join(outputDir, 'features', 'f1-checkout.html'))).toBe(false);
+  });
+
   it('una corrida posterior con menos features seleccionadas borra las páginas de detalle huérfanas de la corrida anterior', async () => {
     const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
     const generator = createReportGenerator(

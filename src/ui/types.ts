@@ -97,7 +97,14 @@ export interface FeatureSummary {
 
 /** Forma de `GET /api/features` -> `session` (ver `routes/features.ts`). */
 export type SessionSummary =
-  { exists: false } | { exists: true; status: SessionState['status']; projectName: string };
+  | { exists: false }
+  | {
+      exists: true;
+      status: SessionState['status'];
+      projectName: string;
+      /** Ref-ids (mismo formato que `FeatureSummary.id`) de las features ya en la sesión viva — ver `FeatureSelect.tsx`. */
+      selectedFeatureIds: string[];
+    };
 
 /**
  * Forma de `GET /api/features` -> `branding` (ver `routes/features.ts` y

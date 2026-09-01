@@ -527,9 +527,18 @@ body {
   font-size: 0.75rem;
 }
 
+/* "Ya en la sesión" (ver FeatureSelect.tsx) — mismo criterio de color que
+   `.report-panel__token-status--ok`: informativo/positivo, no una
+   advertencia. */
+.tag--info {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+
 .feature-select__actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .empty-state {
@@ -792,6 +801,25 @@ body {
   flex-wrap: wrap;
 }
 
+/* Elige qué features entran al PRÓXIMO "Generar reporte" (ver Runner.tsx,
+   `reportScope`) — un renglón más de `.report-panel__row`, sin fondo propio
+   para no competir visualmente con los botones de acción. */
+.report-panel__scope {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.report-panel__scope-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.report-panel__scope-option input[type='radio'] {
+  cursor: pointer;
+}
+
 /* A diferencia de `.settings-panel__token-status` (donde "no configurado"
    es neutro: la integración es opcional) — acá SÍ es rojo a propósito: el
    usuario está a punto de intentar publicar, así que "no configurado" es
@@ -820,6 +848,7 @@ body {
 .report-panel__close {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
 }
 
 /* Árbol lateral */

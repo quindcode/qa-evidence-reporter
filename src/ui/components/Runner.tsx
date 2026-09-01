@@ -18,6 +18,15 @@ export interface RunnerProps {
   onError: (error: ApiRequestError) => void;
   /** Llamado después de `POST /api/session/close` exitoso — el caller (`App.tsx`) vuelve a la pantalla de selección. */
   onSessionClosed: () => void;
+  /**
+   * "Volver a selección" — a diferencia de `onSessionClosed`, NO cierra la
+   * sesión (no llama a ningún endpoint): la sesión sigue viva en el server,
+   * solo cambia de pantalla. Desde ahí el QA puede "Continuar sesión" para
+   * retomar, "Iniciar ejecución" para empezar de cero con otra selección, o
+   * agregar features a esta misma sesión sin perder nada (ver
+   * `FeatureSelect.tsx`, `POST /api/session/add-features`).
+   */
+  onBackToSelection: () => void;
   /** `GET /api/features` -> `jira.enabled` (ver `App.tsx`) — si es `false`, el botón "Adjuntar a Jira" del panel de reporte no se muestra en absoluto. */
   jiraEnabled: boolean;
   /** `GET /api/features` -> `azureDevOps.enabled` (ver `App.tsx`) — si es `false`, el botón "Adjuntar a Azure DevOps" del panel de reporte no se muestra en absoluto. */
@@ -52,6 +61,7 @@ export function Runner({
   onSessionUpdate,
   onError,
   onSessionClosed,
+  onBackToSelection,
   jiraEnabled,
   azureDevOpsEnabled,
   jiraTokenConfigured,
@@ -64,6 +74,16 @@ export function Runner({
   const [notes, setNotes] = useState('');
   const [defectDescription, setDefectDescription] = useState('');
   const [reportUrl, setReportUrl] = useState<string | null>(null);
+  /** `'current'`/`'all'` — qué scope usará el PRÓXIMO click en "Generar reporte" (ver `handleGenerateReport`). Default `'all'`: mismo comportamiento que antes de que existiera esta opción. */
+  const [reportScope, setReportScope] = useState<'all' | 'current'>('all');
+  /**
+   * `featureId` con el que quedó generado el reporte ACTUALMENTE en disco
+   * (`response.featureId` de `POST /api/report/generate`), `null` si fue
+   * con todas las features. Se usa para "Exportar ZIP"/publicar — NUNCA
+   * `reportScope` en vivo, que puede haber cambiado después de generar sin
+   * volver a generar (ver JSDoc de `handlePublishToJira`).
+   */
+  const [generatedFeatureId, setGeneratedFeatureId] = useState<string | null>(null);
   const [jiraIssueKey, setJiraIssueKey] = useState('');
   const [jiraPublishedUrl, setJiraPublishedUrl] = useState<string | null>(null);
   const [azureDevOpsWorkItemId, setAzureDevOpsWorkItemId] = useState('');
@@ -210,8 +230,10 @@ export function Runner({
   async function handleGenerateReport(): Promise<void> {
     setBusy(true);
     try {
-      const response = await api.generateReport();
+      const featureId = reportScope === 'current' ? currentFeature?.id : undefined;
+      const response = await api.generateReport(featureId);
       setReportUrl(response.reportUrl);
+      setGeneratedFeatureId(response.featureId);
     } catch (error) {
       onError(error as ApiRequestError);
     } finally {
@@ -219,11 +241,21 @@ export function Runner({
     }
   }
 
+  /**
+   * Publica usando `generatedFeatureId` (el scope con el que realmente
+   * quedó generado `context.reportsDir` la última vez), no `reportScope`
+   * en vivo — si el QA cambió el radio después de generar pero sin volver a
+   * generar, el `.zip` adjunto sigue siendo el de antes, y el comentario
+   * debe describir exactamente lo mismo que ese `.zip`.
+   */
   async function handlePublishToJira(): Promise<void> {
     if (busy || jiraIssueKey.trim().length === 0) return;
     setBusy(true);
     try {
-      const response = await api.publishToJira(jiraIssueKey.trim());
+      const response = await api.publishToJira(
+        jiraIssueKey.trim(),
+        generatedFeatureId ?? undefined,
+      );
       setJiraPublishedUrl(response.issueUrl);
     } catch (error) {
       onError(error as ApiRequestError);
@@ -238,7 +270,7 @@ export function Runner({
 
     setBusy(true);
     try {
-      const response = await api.publishToAzureDevOps(workItemId);
+      const response = await api.publishToAzureDevOps(workItemId, generatedFeatureId ?? undefined);
       setAzureDevOpsPublishedUrl(response.workItemUrl);
     } catch (error) {
       onError(error as ApiRequestError);
@@ -381,6 +413,28 @@ export function Runner({
           <h3>Reporte</h3>
           <div class="report-panel__body">
             <div class="report-panel__rows">
+              <div class="report-panel__row report-panel__scope" role="radiogroup" aria-label="Alcance del reporte">
+                <label class="report-panel__scope-option">
+                  <input
+                    type="radio"
+                    name="report-scope"
+                    checked={reportScope === 'all'}
+                    onChange={() => setReportScope('all')}
+                    disabled={busy}
+                  />
+                  Todas las features ({session.selectedFeatures.length})
+                </label>
+                <label class="report-panel__scope-option">
+                  <input
+                    type="radio"
+                    name="report-scope"
+                    checked={reportScope === 'current'}
+                    onChange={() => setReportScope('current')}
+                    disabled={busy || !currentFeature}
+                  />
+                  Solo la feature actual{currentFeature ? `: ${currentFeature.name}` : ''}
+                </label>
+              </div>
               <div class="report-panel__row">
                 <button
                   type="button"
@@ -493,6 +547,15 @@ export function Runner({
               )}
             </div>
             <div class="report-panel__close">
+              <button
+                type="button"
+                class="button"
+                onClick={onBackToSelection}
+                disabled={busy}
+                title="Volvé a la pantalla de selección sin cerrar esta sesión — podés agregar features o retomarla desde ahí"
+              >
+                Volver a selección
+              </button>
               <button
                 type="button"
                 class="button button--danger-outline"

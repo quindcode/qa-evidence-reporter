@@ -133,6 +133,91 @@ describe('createSessionEngine', () => {
       );
       expect(idsA).toEqual(idsB);
     });
+
+    it('setea sourceFilePath en cada FeatureExecution, igual a ParsedFeature.filePath', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const state = await engine.createSession(makeFeatures(), 'P');
+
+      expect(state.selectedFeatures[0].sourceFilePath).toBe('login.feature');
+      expect(state.selectedFeatures[1].sourceFilePath).toBe('logout.feature');
+    });
+  });
+
+  describe('addFeatures', () => {
+    /** Una tercera feature ("Settings"), para agregar a una sesión ya creada con `makeFeatures()`. */
+    function makeExtraFeature(): ParsedFeature {
+      return {
+        name: 'Settings',
+        description: '',
+        tags: [],
+        language: 'en',
+        filePath: 'settings.feature',
+        scenarios: [
+          {
+            name: 'Change password',
+            tags: [],
+            isOutlineExample: false,
+            steps: [
+              { keyword: 'Given', text: 'a logged in user', fromBackground: false },
+              { keyword: 'When', text: 'they change their password', fromBackground: false },
+            ],
+          },
+        ],
+      };
+    }
+
+    it('apéndiza la feature al final de selectedFeatures, continuando la secuencia de ids, sin tocar las existentes', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const created = await engine.createSession(makeFeatures(), 'P');
+      await engine.setStepResult(created.selectedFeatures[0].scenarios[0].steps[0].id, 'pass');
+
+      const state = await engine.addFeatures([makeExtraFeature()]);
+
+      expect(state.selectedFeatures).toHaveLength(3);
+      const settings = state.selectedFeatures[2];
+      expect(settings.id).toBe('f2-settings');
+      expect(settings.sourceFilePath).toBe('settings.feature');
+      expect(settings.scenarios[0].steps.every((step) => step.result === 'pending')).toBe(true);
+
+      // Las dos features originales (y el resultado ya marcado en la
+      // primera) quedan intactas.
+      expect(state.selectedFeatures[0].id).toBe('f0-login');
+      expect(state.selectedFeatures[0].scenarios[0].steps[0].result).toBe('pass');
+      expect(state.selectedFeatures[1].id).toBe('f1-logout');
+    });
+
+    it('mueve currentPosition al primer step de la primera feature agregada', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      await engine.next(); // se aleja de la posición inicial, para que el assert de abajo sea significativo.
+
+      const state = await engine.addFeatures([makeExtraFeature()]);
+
+      expect(state.currentPosition).toEqual({ featureIndex: 2, scenarioIndex: 0, stepIndex: 0 });
+    });
+
+    it('si la sesión ya estaba "completed", vuelve a "in_progress" tras agregar', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      await engine.createSession(makeFeatures(), 'P');
+      // 8 steps en total (ver `makeFeatures`) — mismo patrón que el test de
+      // "marca la sesión como completed" más abajo: 7 `next()` llegan al
+      // último step, el 8vo cruza el final y recién ahí `status` pasa a
+      // 'completed'.
+      for (let i = 0; i < 8; i++) await engine.next();
+      expect(engine.getState().status).toBe('completed');
+
+      const state = await engine.addFeatures([makeExtraFeature()]);
+
+      expect(state.status).toBe('in_progress');
+    });
+
+    it('lanza SessionNotFoundError si todavía no hay ninguna sesión creada', async () => {
+      const engine = createSessionEngine(sessionFilePath);
+
+      await expect(engine.addFeatures([makeExtraFeature()])).rejects.toThrow(
+        SessionNotFoundError,
+      );
+    });
   });
 
   describe('getState / getCurrentStep', () => {

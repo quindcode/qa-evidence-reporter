@@ -149,6 +149,43 @@ export function App(): JSX.Element {
     }
   }
 
+  /**
+   * Agrega features a la sesión VIVA sin reemplazarla (ver
+   * `POST /api/session/add-features`, `routes/session.ts`) — a diferencia
+   * de `handleStart`, nunca pierde el progreso ya registrado en las demás
+   * features de la sesión. Aterriza directo en el runner, ya posicionado en
+   * el primer step de la feature recién agregada (ver
+   * `SessionEngine.addFeatures`).
+   */
+  async function handleAddFeatures(featureIds: string[]): Promise<void> {
+    setBusy(true);
+    try {
+      const response = await api.addFeatures(featureIds);
+      setSession(response.session);
+      setCurrentStep(response.currentStep);
+      setPhase('runner');
+    } catch (err) {
+      setError(err as ApiRequestError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * "Volver a selección" (`Runner.tsx`): a diferencia de
+   * `handleSessionClosed`, NUNCA llama a `api.closeSession()` — la sesión
+   * sigue viva en el server, esto es pura navegación del lado de la UI.
+   * Reusa `loadFeatures()` tal cual (default `resetToSelect = true`, ver su
+   * JSDoc): refresca `features`/`sessionSummary` (para que la pantalla de
+   * selección muestre qué features ya están en la sesión, ver
+   * `selectedFeatureIds`) y vuelve a `phase: 'select'`. `session`/
+   * `currentStep` quedan intactos en memoria — "Continuar sesión" los sigue
+   * teniendo disponibles sin pedirlos de nuevo si el QA se arrepiente.
+   */
+  function handleBackToSelection(): void {
+    void loadFeatures();
+  }
+
   function handleSessionUpdate(
     nextSession: SessionState,
     nextCurrentStep: CurrentStepInfo | null,
@@ -242,6 +279,7 @@ export function App(): JSX.Element {
             busy={busy}
             onStart={(ids, force) => void handleStart(ids, force)}
             onContinue={() => void handleContinue()}
+            onAddFeatures={(ids) => void handleAddFeatures(ids)}
           />
         )}
 
@@ -252,6 +290,7 @@ export function App(): JSX.Element {
             onSessionUpdate={handleSessionUpdate}
             onError={setError}
             onSessionClosed={handleSessionClosed}
+            onBackToSelection={handleBackToSelection}
             jiraEnabled={jiraEnabled}
             azureDevOpsEnabled={azureDevOpsEnabled}
             jiraTokenConfigured={jiraTokenConfigured}

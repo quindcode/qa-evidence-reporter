@@ -119,6 +119,18 @@ export interface FeatureExecution {
   name: string;
   tags: string[];
   scenarios: ScenarioExecution[];
+  /**
+   * Ruta absoluta del `.feature` de origen (`ParsedFeature.filePath`, ver
+   * `core/types/parser.ts`) — permite reconocer, desde `adapters/server`,
+   * qué features de `GET /api/features` ya forman parte de esta sesión (ver
+   * `sessionQueries.ts`, `alreadySelectedRefIds`), sin que `core/session`
+   * necesite saber nada sobre `featuresDir` ni sobre la forma de un
+   * "ref id" (eso sigue siendo una decisión de `adapters/server`). Opcional
+   * porque sesiones persistidas ANTES de que existiera este campo no lo
+   * tienen — para esas, simplemente no hay forma de reconocer "ya
+   * seleccionada" hasta que se recreen.
+   */
+  sourceFilePath?: string;
 }
 
 /** Posición actual del QA dentro del árbol `selectedFeatures`. */
@@ -212,6 +224,26 @@ export interface SessionEngine {
    * `'not_started'` no lo produce este motor).
    */
   createSession(features: ParsedFeature[], projectName: string): Promise<SessionState>;
+
+  /**
+   * Agrega `features` al FINAL de `selectedFeatures` de la sesión YA
+   * creada, sin tocar ninguna de las ya existentes (sus resultados,
+   * evidencia y notas quedan intactos) — a diferencia de `createSession`,
+   * que reemplaza `selectedFeatures` por completo. Los ids de las nuevas
+   * features continúan la secuencia de índices existente (`"f{N}-{slug}"`
+   * con `N` arrancando en `selectedFeatures.length` ANTES de agregar), así
+   * que nunca colisionan con los ya asignados.
+   *
+   * `currentPosition` salta al primer step de la primera feature agregada
+   * (mismo criterio que `createSession`: "agregar" debe dejar al QA listo
+   * para arrancar esa feature, no que tenga que navegar manualmente hasta
+   * ella). Si `status` era `'completed'`, vuelve a `'in_progress'` — hay
+   * trabajo pendiente de nuevo.
+   *
+   * Lanza `SessionNotFoundError` si todavía no hay ninguna sesión creada
+   * (agregar features no tiene sentido sin una sesión base).
+   */
+  addFeatures(features: ParsedFeature[]): Promise<SessionState>;
 
   /** Carga el estado desde `sessionFilePath`. Lanza `SessionNotFoundError` si no existe. */
   load(): Promise<SessionState>;

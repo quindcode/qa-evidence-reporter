@@ -2,7 +2,11 @@ import { Router } from 'express';
 
 import type { ServerContext } from '../context.js';
 import { asyncHandler } from '../errors.js';
-import { buildFeatureRefId, loadCurrentSessionOrNull } from '../sessionQueries.js';
+import {
+  alreadySelectedRefIds,
+  buildFeatureRefId,
+  loadCurrentSessionOrNull,
+} from '../sessionQueries.js';
 import type { CoreServices } from '../services.js';
 
 /**
@@ -47,7 +51,16 @@ export function createFeaturesRouter(context: ServerContext, services: CoreServi
           scenarioCount: feature.scenarios.length,
         })),
         session: session
-          ? { exists: true, status: session.status, projectName: session.projectName }
+          ? {
+              exists: true,
+              status: session.status,
+              projectName: session.projectName,
+              // Ref-ids (mismo formato que `features[].id` de acá arriba)
+              // ya presentes en la sesión viva — usado por `FeatureSelect`
+              // para marcar "ya en la sesión" y para filtrar qué mandar a
+              // `POST /api/session/add-features` (ver `routes/session.ts`).
+              selectedFeatureIds: [...alreadySelectedRefIds(context.featuresDir, session)],
+            }
           : { exists: false },
         projectName: settings.projectName,
         branding: {

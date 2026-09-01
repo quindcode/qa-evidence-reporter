@@ -78,6 +78,30 @@ export function createSessionEngine(
     return state;
   }
 
+  async function addFeatures(features: ParsedFeature[]): Promise<SessionState> {
+    const current = requireState();
+    const startIndex = current.selectedFeatures.length;
+    const added = features.map((feature, i) => toFeatureExecution(feature, startIndex + i));
+    current.selectedFeatures.push(...added);
+
+    // Hay trabajo pendiente de nuevo — si la sesión ya estaba 'completed'
+    // antes de agregar, ya no lo está.
+    if (current.status === 'completed') current.status = 'in_progress';
+
+    // Aterriza al QA en el primer step de la primera feature agregada —
+    // mismo criterio que `createSession`. Defensivo (`?.`): en la práctica
+    // toda `ParsedFeature` real tiene al menos un scenario con al menos un
+    // step, pero no se asume acá.
+    const firstScenario = added[0]?.scenarios[0];
+    if (firstScenario && firstScenario.steps.length > 0) {
+      current.currentPosition = { featureIndex: startIndex, scenarioIndex: 0, stepIndex: 0 };
+    }
+
+    current.updatedAt = clock();
+    await persist();
+    return current;
+  }
+
   async function load(): Promise<SessionState> {
     let raw: string;
     try {
@@ -292,6 +316,7 @@ export function createSessionEngine(
 
   return {
     createSession,
+    addFeatures,
     load,
     save,
     getState,
@@ -316,6 +341,7 @@ function toFeatureExecution(feature: ParsedFeature, featureIndex: number): Featu
     scenarios: feature.scenarios.map((scenario, scenarioIndex) =>
       toScenarioExecution(scenario, featureId, scenarioIndex),
     ),
+    sourceFilePath: feature.filePath,
   };
 }
 

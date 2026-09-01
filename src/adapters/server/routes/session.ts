@@ -19,7 +19,12 @@ import {
   asyncHandler,
   requireStringParam,
 } from '../errors.js';
-import { buildFeatureRefId, findStepContext, loadCurrentSessionOrNull } from '../sessionQueries.js';
+import {
+  alreadySelectedRefIds,
+  buildFeatureRefId,
+  findStepContext,
+  loadCurrentSessionOrNull,
+} from '../sessionQueries.js';
 import type { CoreServices } from '../services.js';
 
 /**
@@ -154,6 +159,59 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
         selected,
         context.config.projectName,
       );
+      res.status(201).json({ session, currentStep: services.sessionEngine.getCurrentStep() });
+    }),
+  );
+
+  /**
+   * `POST /api/session/add-features` — agrega features a la sesión VIVA
+   * sin tocar el progreso ya registrado en las demás (ver
+   * `SessionEngine.addFeatures`, `core/types/session.ts`). A diferencia de
+   * `/session/select`, nunca reemplaza nada, así que no necesita
+   * `?force=true` ni el chequeo de `sessionHasRecordedProgress` — no hay
+   * nada que perder.
+   *
+   * Complementa el nuevo botón "Volver a selección" del Runner (que es
+   * pura navegación del lado de la UI, sin llamar a ningún endpoint): esta
+   * ruta es la pieza de server que hace falta para que, desde esa pantalla,
+   * el QA pueda sumar una feature que no estaba en la selección original
+   * sin cerrar la sesión (ver ARCHITECTURE.md).
+   */
+  router.post(
+    '/session/add-features',
+    asyncHandler(async (req, res) => {
+      const featureIds = extractFeatureIds(req.body);
+      // 404 si no hay sesión viva — "agregar" no tiene sentido sin una
+      // sesión base a la que agregarle algo (para ese caso, el flujo
+      // correcto es `/session/select`, que sí crea una desde cero).
+      const existing = await requireSession(context, services);
+
+      const allFeatures = await services.gherkinParser.parseDirectory(context.featuresDir);
+      const featuresById = new Map<string, ParsedFeature>(
+        allFeatures.map((feature) => [buildFeatureRefId(context.featuresDir, feature), feature]),
+      );
+      const alreadySelected = alreadySelectedRefIds(context.featuresDir, existing);
+
+      const toAdd: ParsedFeature[] = featureIds.map((id) => {
+        const feature = featuresById.get(id);
+        if (!feature) {
+          throw new QaError(`No se encontró ninguna feature con id "${id}".`, FEATURE_NOT_FOUND);
+        }
+        // Validación redundante con la UI (que ya excluye del payload las
+        // features marcadas "ya en la sesión", ver `FeatureSelect.tsx`) —
+        // mismo criterio defensivo que el resto de este archivo: el server
+        // es la fuente de verdad real, nunca confía a ciegas en lo que
+        // filtró el cliente.
+        if (alreadySelected.has(id)) {
+          throw new QaError(
+            `La feature "${id}" ya está en la sesión actual — no se puede agregar de nuevo.`,
+            INVALID_REQUEST_BODY,
+          );
+        }
+        return feature;
+      });
+
+      const session = await services.sessionEngine.addFeatures(toAdd);
       res.status(201).json({ session, currentStep: services.sessionEngine.getCurrentStep() });
     }),
   );

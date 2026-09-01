@@ -402,6 +402,18 @@ export interface GenerateReportOptions {
    * `handlebars` directamente).
    */
   templateDir?: string;
+  /**
+   * Si se provee, `generate()` solo incluye en el reporte las features cuyo
+   * `FeatureExecution.id` (ver `core/session/ids.ts`) esté en esta lista —
+   * en el mismo orden en que aparecen en `sessionState.selectedFeatures`,
+   * nunca en el orden de `featureIds`. `undefined` (el default): se
+   * incluyen TODAS las features de `selectedFeatures`, comportamiento
+   * idéntico al de antes de que existiera esta opción. Un id que no
+   * coincide con ninguna feature de la sesión se ignora silenciosamente
+   * (la validación de "el id existe" es responsabilidad del caller, p. ej.
+   * la ruta del server — ver `routes/report.ts`).
+   */
+  featureIds?: string[];
 }
 
 /**

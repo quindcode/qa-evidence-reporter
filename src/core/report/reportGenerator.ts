@@ -121,7 +121,7 @@ export function createReportGenerator(
   async function generate(
     sessionState: SessionState,
     outputDir: string,
-    options: { templateDir?: string } = {},
+    options: { templateDir?: string; featureIds?: string[] } = {},
   ): Promise<void> {
     const engine = options.templateDir
       ? templateEngineFactory(options.templateDir)
@@ -154,6 +154,7 @@ export function createReportGenerator(
         evidenceStore,
         outputDir,
         clock,
+        options.featureIds,
       );
 
       await copyStaticAssets(engine.getStaticAssetsDir(), outputDir);
@@ -343,15 +344,32 @@ function toFeatureView(
   };
 }
 
+/**
+ * `state.selectedFeatures` tal cual, o filtrado a solo las que estén en
+ * `featureIds` (preservando el orden de `selectedFeatures`, nunca el de
+ * `featureIds`) — ver JSDoc de `GenerateReportOptions.featureIds`
+ * (`core/types/report.ts`) para el contrato completo. `undefined`: sin
+ * filtrar, mismo comportamiento que antes de que existiera esta opción.
+ */
+function selectFeatures(
+  features: FeatureExecution[],
+  featureIds: string[] | undefined,
+): FeatureExecution[] {
+  if (!featureIds) return features;
+  const wanted = new Set(featureIds);
+  return features.filter((feature) => wanted.has(feature.id));
+}
+
 async function buildFeatureViews(
   state: SessionState,
   evidenceStore: EvidenceStore,
   evidenceBaseDir: string,
   outputDir: string,
+  featureIds: string[] | undefined,
 ): Promise<FeatureReportView[]> {
   const featureViews: FeatureReportView[] = [];
 
-  for (const feature of state.selectedFeatures) {
+  for (const feature of selectFeatures(state.selectedFeatures, featureIds)) {
     const scenarioViews: ScenarioReportView[] = [];
 
     for (const scenario of feature.scenarios) {
@@ -381,8 +399,13 @@ function collectFeatureScenarioResults(feature: FeatureExecution): StepResult[] 
   return feature.scenarios.map(deriveScenarioResult);
 }
 
-function collectAllScenarioResults(state: SessionState): StepResult[] {
-  return state.selectedFeatures.flatMap((feature) => collectFeatureScenarioResults(feature));
+function collectAllScenarioResults(
+  state: SessionState,
+  featureIds: string[] | undefined,
+): StepResult[] {
+  return selectFeatures(state.selectedFeatures, featureIds).flatMap((feature) =>
+    collectFeatureScenarioResults(feature),
+  );
 }
 
 function buildResultCounts(results: StepResult[]): ResultCounts {
@@ -408,8 +431,15 @@ async function buildReportData(
   evidenceStore: EvidenceStore,
   outputDir: string,
   clock: () => string,
+  featureIds: string[] | undefined,
 ): Promise<ReportData> {
-  const features = await buildFeatureViews(state, evidenceStore, config.evidenceBaseDir, outputDir);
+  const features = await buildFeatureViews(
+    state,
+    evidenceStore,
+    config.evidenceBaseDir,
+    outputDir,
+    featureIds,
+  );
   // Decisión de diseño (% sobre SCENARIOS, no sobre steps): un scenario con
   // 2 steps pass y 1 skip deriva a "skip" (`deriveScenarioResult` — fail >
   // pendiente > omitido > aprobado), pero si se contaran los 3 steps
@@ -418,7 +448,7 @@ async function buildReportData(
   // pasado. Contar por scenario (cada uno pesa 1, con su resultado final)
   // refleja mejor "cuántos casos de prueba pasaron", que es la pregunta que
   // de verdad le importa a quien lee el reporte.
-  const summary = buildResultSummary(buildResultCounts(collectAllScenarioResults(state)));
+  const summary = buildResultSummary(buildResultCounts(collectAllScenarioResults(state, featureIds)));
   const branding = await buildBrandingMeta(config.branding, outputDir);
 
   return {

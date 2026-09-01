@@ -35,6 +35,14 @@ import type { SessionState, StepResult } from '../types/session.js';
  * la nota de diseño de `JiraConfigSchema`/`AzureDevOpsConfigSchema` en
  * `core/types/config.ts` sobre por qué "módulo hermano" es la decisión
  * arquitectónica deliberada acá, no un descuido.
+ *
+ * `featureIds` (opcional): mismo contrato que `buildQaSummaryComment`
+ * (`core/jira/commentBuilder.ts`) — si se provee, el comentario solo
+ * describe las features de `state.selectedFeatures` cuyo `id` esté en esta
+ * lista, para que nunca describa algo distinto de lo que el `.zip`
+ * adjuntado en el mismo request realmente contiene (ver `routes/report.ts`,
+ * `publish-azure-devops`). `undefined`: todas las features, comportamiento
+ * idéntico al de antes de que existiera esta opción.
  */
 /**
  * Línea fija en su propio párrafo al final de todo comentario generado por
@@ -44,11 +52,14 @@ import type { SessionState, StepResult } from '../types/session.js';
  */
 export const QA_SUMMARY_COMMENT_MARKER = 'Generado automáticamente por QA Evidence Reporter.';
 
-export function buildQaSummaryCommentHtml(state: SessionState): string {
+export function buildQaSummaryCommentHtml(state: SessionState, featureIds?: string[]): string {
   const parts: string[] = [];
   const scenarioResults: StepResult[] = [];
+  const features = featureIds
+    ? state.selectedFeatures.filter((feature) => featureIds.includes(feature.id))
+    : state.selectedFeatures;
 
-  for (const feature of state.selectedFeatures) {
+  for (const feature of features) {
     parts.push(`<h3>${escapeHtml(feature.name)}</h3>`, '<ul>');
     for (const scenario of feature.scenarios) {
       const result = deriveScenarioResult(scenario);

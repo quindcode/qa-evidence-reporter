@@ -19,7 +19,30 @@ import type { SessionEngine, SessionState, StepExecution } from '../../core/type
  * requiere mantener un índice aparte.
  */
 export function buildFeatureRefId(featuresDir: string, feature: ParsedFeature): string {
-  return relative(featuresDir, feature.filePath).split(/[\\/]/).join('/');
+  return refIdFromFilePath(featuresDir, feature.filePath);
+}
+
+/** Misma lógica que `buildFeatureRefId`, pero sobre una ruta de archivo suelta en vez de un `ParsedFeature` completo — la usa `alreadySelectedRefIds` sobre `FeatureExecution.sourceFilePath`. */
+function refIdFromFilePath(featuresDir: string, filePath: string): string {
+  return relative(featuresDir, filePath).split(/[\\/]/).join('/');
+}
+
+/**
+ * Ref-ids (mismo formato que `buildFeatureRefId`/`FeatureSummary.id`, ver
+ * `routes/features.ts`) de las features que YA forman parte de `session` —
+ * a partir de `FeatureExecution.sourceFilePath` (ver su JSDoc en
+ * `core/types/session.ts`). `session: null` o una sesión sin ninguna
+ * `sourceFilePath` reconocible (persistida antes de que ese campo
+ * existiera) produce un `Set` vacío — nunca lanza.
+ */
+export function alreadySelectedRefIds(featuresDir: string, session: SessionState | null): Set<string> {
+  if (!session) return new Set();
+  return new Set(
+    session.selectedFeatures
+      .map((feature) => feature.sourceFilePath)
+      .filter((path): path is string => Boolean(path))
+      .map((filePath) => refIdFromFilePath(featuresDir, filePath)),
+  );
 }
 
 /**

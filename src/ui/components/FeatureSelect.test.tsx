@@ -39,6 +39,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={vi.fn()}
         onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -57,6 +58,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={vi.fn()}
         onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -72,6 +74,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={onStart}
         onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -87,6 +90,7 @@ describe('FeatureSelect', () => {
       exists: true,
       status: 'in_progress',
       projectName: 'Demo',
+      selectedFeatureIds: [],
     };
     render(
       <FeatureSelect
@@ -95,6 +99,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={vi.fn()}
         onContinue={onContinue}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -113,6 +118,7 @@ describe('FeatureSelect', () => {
       exists: true,
       status: 'completed',
       projectName: 'Demo',
+      selectedFeatureIds: [],
     };
     render(
       <FeatureSelect
@@ -121,6 +127,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={vi.fn()}
         onContinue={onContinue}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -140,6 +147,7 @@ describe('FeatureSelect', () => {
       exists: true,
       status: 'completed',
       projectName: 'Demo',
+      selectedFeatureIds: [],
     };
     render(
       <FeatureSelect
@@ -148,6 +156,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={onStart}
         onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -166,6 +175,7 @@ describe('FeatureSelect', () => {
       exists: true,
       status: 'completed',
       projectName: 'Demo',
+      selectedFeatureIds: [],
     };
     render(
       <FeatureSelect
@@ -174,6 +184,7 @@ describe('FeatureSelect', () => {
         busy={false}
         onStart={onStart}
         onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
       />,
     );
 
@@ -182,5 +193,80 @@ describe('FeatureSelect', () => {
 
     expect(onStart).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+
+  it('con una sesión existente, marca "Ya en la sesión" solo las features de selectedFeatureIds', () => {
+    const sessionSummary: SessionSummary = {
+      exists: true,
+      status: 'in_progress',
+      projectName: 'Demo',
+      selectedFeatureIds: ['login.feature'],
+    };
+    render(
+      <FeatureSelect
+        features={FEATURES}
+        sessionSummary={sessionSummary}
+        busy={false}
+        onStart={vi.fn()}
+        onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Ya en la sesión')).toBeInTheDocument();
+    expect(screen.getAllByText('Ya en la sesión')).toHaveLength(1);
+  });
+
+  it('sin sesión existente, no muestra el botón "Agregar a la sesión actual"', () => {
+    render(
+      <FeatureSelect
+        features={FEATURES}
+        sessionSummary={{ exists: false }}
+        busy={false}
+        onStart={vi.fn()}
+        onContinue={vi.fn()}
+        onAddFeatures={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /agregar a la sesión actual/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('"Agregar a la sesión actual" llama a onAddFeatures solo con los ids NO seleccionados todavía', () => {
+    const onAddFeatures = vi.fn();
+    const sessionSummary: SessionSummary = {
+      exists: true,
+      status: 'in_progress',
+      projectName: 'Demo',
+      selectedFeatureIds: ['login.feature'],
+    };
+    render(
+      <FeatureSelect
+        features={FEATURES}
+        sessionSummary={sessionSummary}
+        busy={false}
+        onStart={vi.fn()}
+        onContinue={vi.fn()}
+        onAddFeatures={onAddFeatures}
+      />,
+    );
+
+    // El botón arranca deshabilitado (nada tildado todavía).
+    const addButton = screen.getByRole('button', { name: /agregar a la sesión actual/i });
+    expect(addButton).toBeDisabled();
+
+    // Tilda AMBAS features — "login.feature" ya está en la sesión,
+    // "checkout.feature" no.
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(addButton).not.toBeDisabled();
+
+    fireEvent.click(addButton);
+
+    // Nunca pide confirmación (nada se destruye) y solo manda la que
+    // faltaba agregar.
+    expect(onAddFeatures).toHaveBeenCalledWith(['checkout.feature']);
   });
 });

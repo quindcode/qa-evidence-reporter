@@ -44,12 +44,27 @@ export const QA_SUMMARY_COMMENT_MARKER = 'Generado automáticamente por QA Evide
  * final) es también lo que hace que este número SIEMPRE coincida con el
  * que ya muestra el dashboard del reporte HTML — ambas superficies deben
  * mostrar el mismo % sobre la misma base de cálculo.
+ *
+ * `featureIds` (opcional): si se provee, el comentario solo describe las
+ * features de `state.selectedFeatures` cuyo `id` esté en esta lista — mismo
+ * contrato que `GenerateReportOptions.featureIds`
+ * (`core/types/report.ts`), para que el comentario nunca describa algo
+ * distinto de lo que el `.zip` adjuntado en el mismo request realmente
+ * contiene (ver `routes/report.ts`, `publish-jira`). `undefined`: todas las
+ * features, comportamiento idéntico al de antes de que existiera esta
+ * opción.
  */
-export function buildQaSummaryComment(state: SessionState): AdfDocument {
+export function buildQaSummaryComment(
+  state: SessionState,
+  featureIds?: string[],
+): AdfDocument {
   const content: unknown[] = [];
   const scenarioResults: StepResult[] = [];
+  const features = featureIds
+    ? state.selectedFeatures.filter((feature) => featureIds.includes(feature.id))
+    : state.selectedFeatures;
 
-  for (const feature of state.selectedFeatures) {
+  for (const feature of features) {
     content.push(heading(feature.name));
     const items = feature.scenarios.map((scenario) => {
       const result = deriveScenarioResult(scenario);

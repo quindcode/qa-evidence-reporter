@@ -97,6 +97,8 @@ export interface EvidenceListResponse {
 
 export interface ReportGenerateResponse {
   reportUrl: string;
+  /** `FeatureExecution.id` con el que se generó el reporte, o `null` si se generó con todas las features seleccionadas. */
+  featureId: string | null;
 }
 
 export interface JiraPublishResponse {
@@ -124,6 +126,15 @@ export const api = {
   selectFeatures(featureIds: string[], force = false): Promise<SessionResponse> {
     const query = force ? '?force=true' : '';
     return request<SessionResponse>(`/api/session/select${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ featureIds }),
+    });
+  },
+
+  /** Agrega features a la sesión viva sin tocar el progreso ya registrado — ver `POST /api/session/add-features` (`routes/session.ts`). */
+  addFeatures(featureIds: string[]): Promise<SessionResponse> {
+    return request<SessionResponse>('/api/session/add-features', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ featureIds }),
@@ -196,23 +207,29 @@ export const api = {
     });
   },
 
-  generateReport(): Promise<ReportGenerateResponse> {
-    return request<ReportGenerateResponse>('/api/report/generate', { method: 'POST' });
-  },
-
-  publishToJira(issueKey: string): Promise<JiraPublishResponse> {
-    return request<JiraPublishResponse>('/api/report/publish-jira', {
+  /** `featureId` ausente/`undefined`: genera con todas las features seleccionadas (comportamiento por defecto). */
+  generateReport(featureId?: string): Promise<ReportGenerateResponse> {
+    return request<ReportGenerateResponse>('/api/report/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ issueKey }),
+      body: JSON.stringify({ featureId }),
     });
   },
 
-  publishToAzureDevOps(workItemId: number): Promise<AzureDevOpsPublishResponse> {
+  /** `featureId`: debe ser el mismo con el que se generó el reporte que se está publicando (ver `ReportGenerateResponse.featureId`), para que el comentario describa lo mismo que el `.zip` adjuntado. */
+  publishToJira(issueKey: string, featureId?: string): Promise<JiraPublishResponse> {
+    return request<JiraPublishResponse>('/api/report/publish-jira', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issueKey, featureId }),
+    });
+  },
+
+  publishToAzureDevOps(workItemId: number, featureId?: string): Promise<AzureDevOpsPublishResponse> {
     return request<AzureDevOpsPublishResponse>('/api/report/publish-azure-devops', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workItemId }),
+      body: JSON.stringify({ workItemId, featureId }),
     });
   },
 

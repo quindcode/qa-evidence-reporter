@@ -10,6 +10,7 @@ import {
   createReportGenerator,
 } from '../../../core/report/index.js';
 import { QaError } from '../../../core/types/errors.js';
+import type { SessionState } from '../../../core/types/session.js';
 import type { ServerContext } from '../context.js';
 import {
   INVALID_REQUEST_BODY,
@@ -40,7 +41,7 @@ export function createReportRouter(context: ServerContext, services: CoreService
 
   router.post(
     '/report/generate',
-    asyncHandler(async (_req, res) => {
+    asyncHandler(async (req, res) => {
       const session = await loadCurrentSessionOrNull(services.sessionEngine);
       if (!session) {
         throw new QaError(
@@ -49,6 +50,8 @@ export function createReportRouter(context: ServerContext, services: CoreService
           NOTHING_TO_REPORT,
         );
       }
+
+      const featureId = resolveFeatureIdFromBody(req.body?.featureId, session);
 
       const templateEngine = createHandlebarsTemplateEngine(context.templateDir);
       const generator = createReportGenerator(
@@ -69,10 +72,18 @@ export function createReportRouter(context: ServerContext, services: CoreService
         templateEngine,
       );
 
-      await generator.generate(session, context.reportsDir);
+      await generator.generate(session, context.reportsDir, {
+        featureIds: featureId ? [featureId] : undefined,
+      });
 
-      context.logger.info('Reporte generado desde el server', { outputDir: context.reportsDir });
-      res.status(201).json({ reportUrl: `${REPORTS_STATIC_PREFIX}/index.html` });
+      context.logger.info('Reporte generado desde el server', {
+        outputDir: context.reportsDir,
+        featureId: featureId ?? 'all',
+      });
+      res.status(201).json({
+        reportUrl: `${REPORTS_STATIC_PREFIX}/index.html`,
+        featureId: featureId ?? null,
+      });
     }),
   );
 
@@ -146,7 +157,17 @@ export function createReportRouter(context: ServerContext, services: CoreService
       // cualquier otro fallo de `attachReport`.
       const session = await loadCurrentSessionOrNull(services.sessionEngine);
       if (session) {
-        await jiraClient.addComment(trimmedIssueKey, buildQaSummaryComment(session));
+        // `featureId` (opcional, mismo campo que `POST /report/generate`):
+        // el ZIP recién adjuntado ya está acotado al scope con el que se
+        // generó por última vez `context.reportsDir` — este comentario debe
+        // describir exactamente ESE mismo scope, no la sesión completa, o
+        // el comentario terminaría mencionando features que el adjunto no
+        // contiene.
+        const featureId = resolveFeatureIdFromBody(req.body?.featureId, session);
+        await jiraClient.addComment(
+          trimmedIssueKey,
+          buildQaSummaryComment(session, featureId ? [featureId] : undefined),
+        );
       }
 
       context.logger.info('Reporte adjuntado a Jira', { issueKey: trimmedIssueKey });
@@ -190,7 +211,14 @@ export function createReportRouter(context: ServerContext, services: CoreService
       // `attachReport`.
       const session = await loadCurrentSessionOrNull(services.sessionEngine);
       if (session) {
-        await azureDevOpsClient.addComment(workItemId, buildQaSummaryCommentHtml(session));
+        // Ver el comentario equivalente en "publish-jira": el comentario
+        // debe describir el mismo scope con el que se generó el ZIP recién
+        // adjuntado, no la sesión completa.
+        const featureId = resolveFeatureIdFromBody(req.body?.featureId, session);
+        await azureDevOpsClient.addComment(
+          workItemId,
+          buildQaSummaryCommentHtml(session, featureId ? [featureId] : undefined),
+        );
       }
 
       context.logger.info('Reporte adjuntado a Azure DevOps', { workItemId });
@@ -199,6 +227,32 @@ export function createReportRouter(context: ServerContext, services: CoreService
   );
 
   return router;
+}
+
+/**
+ * Resuelve el `featureId` opcional de un body (`generate`/`publish-jira`/
+ * `publish-azure-devops`) — `undefined`/ausente significa "todas las
+ * features" (comportamiento por defecto, sin cambios respecto a antes de
+ * esta opción). Si viene un valor, debe ser un string no vacío que
+ * coincida con el `id` de alguna feature de `session.selectedFeatures` — de
+ * lo contrario lanza `INVALID_REQUEST_BODY`, mismo criterio que la
+ * validación existente de `issueKey`/`workItemId`.
+ */
+function resolveFeatureIdFromBody(value: unknown, session: SessionState): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new QaError('El campo "featureId" debe ser un string no vacío.', INVALID_REQUEST_BODY);
+  }
+
+  const trimmed = value.trim();
+  const exists = session.selectedFeatures.some((feature) => feature.id === trimmed);
+  if (!exists) {
+    throw new QaError(
+      `"featureId" (${trimmed}) no coincide con ninguna feature seleccionada en la sesión actual.`,
+      INVALID_REQUEST_BODY,
+    );
+  }
+  return trimmed;
 }
 
 /** `null` si `value` no es un entero positivo válido (ni como `number` ni como `string` numérica) — nunca lanza. */

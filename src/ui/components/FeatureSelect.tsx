@@ -9,6 +9,8 @@ export interface FeatureSelectProps {
   busy: boolean;
   onStart: (featureIds: string[], force: boolean) => void;
   onContinue: () => void;
+  /** Agrega las features elegidas a la sesión viva SIN reemplazarla (ver `POST /api/session/add-features`) — distinto de `onStart`, que siempre reemplaza. */
+  onAddFeatures: (featureIds: string[]) => void;
 }
 
 const SESSION_STATUS_LABELS: Record<string, string> = {
@@ -45,12 +47,20 @@ export function FeatureSelect({
   busy,
   onStart,
   onContinue,
+  onAddFeatures,
 }: FeatureSelectProps): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const hasExistingSession = sessionSummary.exists;
   const isUnfinishedSession = sessionSummary.exists && sessionSummary.status !== 'completed';
   const isCompletedSession = sessionSummary.exists && sessionSummary.status === 'completed';
+  const selectedFeatureIds = sessionSummary.exists
+    ? new Set(sessionSummary.selectedFeatureIds)
+    : new Set<string>();
+  // De lo que el QA tildó, lo que SÍ tiene sentido agregar a la sesión viva
+  // (excluye lo que ya está ahí — agregarlo de nuevo no tiene efecto y el
+  // server lo rechaza, ver `routes/session.ts`).
+  const addableSelected = Array.from(selected).filter((id) => !selectedFeatureIds.has(id));
 
   const allSelected = useMemo(
     () => features.length > 0 && selected.size === features.length,
@@ -91,6 +101,11 @@ export function FeatureSelect({
       if (!confirmed) return;
     }
     onStart(Array.from(selected), hasExistingSession);
+  }
+
+  function handleAddFeatures(): void {
+    if (addableSelected.length === 0) return;
+    onAddFeatures(addableSelected);
   }
 
   return (
@@ -152,6 +167,9 @@ export function FeatureSelect({
                     <span class="feature-card__scenario-count">
                       {feature.scenarioCount} escenario{feature.scenarioCount === 1 ? '' : 's'}
                     </span>
+                    {selectedFeatureIds.has(feature.id) && (
+                      <span class="tag tag--info">Ya en la sesión</span>
+                    )}
                     {feature.tags.map((tag) => (
                       <span key={tag} class="tag">
                         {tag}
@@ -174,6 +192,17 @@ export function FeatureSelect({
         >
           Iniciar ejecución ({selected.size})
         </button>
+        {hasExistingSession && (
+          <button
+            type="button"
+            class="button"
+            disabled={addableSelected.length === 0 || busy}
+            onClick={handleAddFeatures}
+            title="Suma las features tildadas a la sesión actual, sin tocar el progreso ya registrado"
+          >
+            Agregar a la sesión actual ({addableSelected.length})
+          </button>
+        )}
       </div>
     </div>
   );

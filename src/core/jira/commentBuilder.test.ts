@@ -109,4 +109,21 @@ describe('buildQaSummaryComment', () => {
 
     expect(textOf(doc)).toContain('Exportar CSV — Omitido');
   });
+
+  it('con `featureIds`, solo describe esa feature (y recalcula el resumen solo sobre ella)', () => {
+    const doc = buildQaSummaryComment(
+      session([
+        feature('Login', [scenario('Login OK', ['pass'])]),
+        feature('Checkout', [scenario('Compra rechazada', ['fail'])]),
+      ]),
+      ['f-Login'],
+    );
+
+    const text = textOf(doc);
+    expect(text).toContain('Login');
+    expect(text).toContain('Login OK — Aprobado');
+    expect(text).not.toContain('Checkout');
+    expect(text).not.toContain('Compra rechazada');
+    expect(text).toContain('Aprobado: 100% (1/1)');
+  });
 });

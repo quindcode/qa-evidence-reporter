@@ -120,6 +120,7 @@ describe('Runner — Cerrar sesión', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={onSessionClosed}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -156,6 +157,7 @@ describe('Runner — Cerrar sesión', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={onSessionClosed}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -167,6 +169,37 @@ describe('Runner — Cerrar sesión', () => {
 
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(onSessionClosed).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('"Volver a selección" llama a onBackToSelection sin pedir confirmación ni llamar a ningún endpoint', async () => {
+    const fetchMock = mockFetch();
+    const onBackToSelection = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm');
+
+    render(
+      <Runner
+        session={SESSION}
+        currentStep={CURRENT_STEP}
+        onSessionUpdate={vi.fn()}
+        onError={vi.fn()}
+        onSessionClosed={vi.fn()}
+        onBackToSelection={onBackToSelection}
+        jiraEnabled={false}
+        azureDevOpsEnabled={false}
+        jiraTokenConfigured={false}
+        azureDevOpsTokenConfigured={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /volver a selección/i }));
+
+    expect(onBackToSelection).toHaveBeenCalledTimes(1);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/session/close',
+      expect.anything(),
+    );
     confirmSpy.mockRestore();
   });
 });
@@ -182,6 +215,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -207,6 +241,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={true}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={true}
@@ -258,6 +293,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={true}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -292,6 +328,7 @@ describe('Runner — Adjuntar a Jira', () => {
         onSessionUpdate={vi.fn()}
         onError={onError}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={true}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={true}
@@ -326,6 +363,7 @@ describe('Runner — Adjuntar a Azure DevOps', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -353,6 +391,7 @@ describe('Runner — Adjuntar a Azure DevOps', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={true}
         jiraTokenConfigured={false}
@@ -413,6 +452,7 @@ describe('Runner — Adjuntar a Azure DevOps', () => {
         onSessionUpdate={vi.fn()}
         onError={onError}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={true}
         jiraTokenConfigured={false}
@@ -454,6 +494,7 @@ describe('Runner — Navegación', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -498,6 +539,7 @@ describe('Runner — Navegación', () => {
         onSessionUpdate={vi.fn()}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}
@@ -628,6 +670,7 @@ describe('Runner — Marcar resultado como Fail', () => {
         onSessionUpdate={onSessionUpdate}
         onError={vi.fn()}
         onSessionClosed={vi.fn()}
+        onBackToSelection={vi.fn()}
         jiraEnabled={false}
         azureDevOpsEnabled={false}
         jiraTokenConfigured={false}

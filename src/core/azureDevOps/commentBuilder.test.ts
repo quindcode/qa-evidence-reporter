@@ -98,4 +98,20 @@ describe('buildQaSummaryCommentHtml', () => {
     expect(html).toContain('Caso &quot;especial&quot; &amp; raro');
     expect(html).not.toContain('<admin>');
   });
+
+  it('con `featureIds`, solo describe esa feature (y recalcula el resumen solo sobre ella)', () => {
+    const html = buildQaSummaryCommentHtml(
+      session([
+        feature('Login', [scenario('Login OK', ['pass'])]),
+        feature('Checkout', [scenario('Compra rechazada', ['fail'])]),
+      ]),
+      ['f-Login'],
+    );
+
+    expect(html).toContain('Login');
+    expect(html).toContain('Login OK — Aprobado');
+    expect(html).not.toContain('Checkout');
+    expect(html).not.toContain('Compra rechazada');
+    expect(html).toContain('Aprobado: 100% (1/1)');
+  });
 });

@@ -702,6 +702,117 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     await request(app).post('/api/session/close').expect(200);
   });
 
+  describe('POST /api/session/add-features', () => {
+    const CHECKOUT_FEATURE_SOURCE = `Feature: Checkout
+  Scenario: Pago con tarjeta
+    Given hay items en el carrito
+    When paga con una tarjeta válida
+`;
+
+    async function writeCheckoutFeature(context: ServerContext): Promise<void> {
+      await writeFile(join(context.featuresDir, 'checkout.feature'), CHECKOUT_FEATURE_SOURCE, 'utf-8');
+    }
+
+    it('sin ninguna sesión viva -> 404 SESSION_NOT_FOUND', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+      await writeCheckoutFeature(context);
+
+      const response = await request(app)
+        .post('/api/session/add-features')
+        .send({ featureIds: ['checkout.feature'] })
+        .expect(404);
+
+      expect(response.body.error.code).toBe('SESSION_NOT_FOUND');
+    });
+
+    it('agrega la feature al final de la sesión SIN tocar el progreso ya registrado en la primera', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+      await writeCheckoutFeature(context);
+
+      const selectResponse = await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+      const stepId: string = selectResponse.body.currentStep.step.id;
+      await request(app)
+        .post(`/api/session/step/${stepId}/result`)
+        .send({ result: 'pass' })
+        .expect(200);
+
+      const addResponse = await request(app)
+        .post('/api/session/add-features')
+        .send({ featureIds: ['checkout.feature'] })
+        .expect(201);
+
+      const session = addResponse.body.session;
+      expect(session.selectedFeatures).toHaveLength(2);
+      expect(session.selectedFeatures[0].id).toBe('f0-inicio-de-sesion');
+      // El resultado ya marcado en Login sigue ahí.
+      expect(session.selectedFeatures[0].scenarios[0].steps[0].result).toBe('pass');
+      expect(session.selectedFeatures[1].id).toBe('f1-checkout');
+      expect(session.selectedFeatures[1].scenarios[0].steps[0].result).toBe('pending');
+
+      // Aterriza directo en el primer step de la feature agregada.
+      expect(addResponse.body.currentStep.featureId).toBe('f1-checkout');
+    });
+
+    it('con un featureId ya seleccionado -> 400 INVALID_REQUEST_BODY, sin tocar la sesión', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+
+      await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+
+      const response = await request(app)
+        .post('/api/session/add-features')
+        .send({ featureIds: ['login.feature'] })
+        .expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_REQUEST_BODY');
+    });
+
+    it('con un featureId inexistente -> 400 FEATURE_NOT_FOUND', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+
+      await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+
+      const response = await request(app)
+        .post('/api/session/add-features')
+        .send({ featureIds: ['no-existe.feature'] })
+        .expect(400);
+
+      expect(response.body.error.code).toBe('FEATURE_NOT_FOUND');
+    });
+
+    it('GET /api/features expone selectedFeatureIds con los ref-ids ya en la sesión viva', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+      await writeCheckoutFeature(context);
+
+      await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+
+      const response = await request(app).get('/api/features').expect(200);
+
+      expect(response.body.session).toEqual({
+        exists: true,
+        status: 'in_progress',
+        projectName: 'Proyecto de prueba',
+        selectedFeatureIds: ['login.feature'],
+      });
+    });
+  });
+
   it('POST /api/report/generate sin sesión guardada -> 404 NOTHING_TO_REPORT', async () => {
     const app = createApp(await buildContext(projectRoot));
 
@@ -716,6 +827,71 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     const response = await request(app).get('/api/report/export-zip').expect(404);
 
     expect(response.body.error.code).toBe('NO_REPORT_GENERATED');
+  });
+
+  describe('POST /api/report/generate con "featureId" (acotar el reporte a una sola feature)', () => {
+    const CHECKOUT_FEATURE_SOURCE = `Feature: Checkout
+  Scenario: Pago con tarjeta
+    Given hay items en el carrito
+    When paga con una tarjeta válida
+`;
+
+    /** Escribe una segunda feature ("checkout.feature") y selecciona AMBAS ("login.feature" + "checkout.feature"). */
+    async function selectTwoFeatures(context: ServerContext, app: ReturnType<typeof createApp>) {
+      await writeFile(join(context.featuresDir, 'checkout.feature'), CHECKOUT_FEATURE_SOURCE, 'utf-8');
+      await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature', 'checkout.feature'] })
+        .expect(201);
+    }
+
+    it('con un "featureId" que no coincide con ninguna feature seleccionada -> 400 INVALID_REQUEST_BODY', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+      await selectTwoFeatures(context, app);
+
+      const response = await request(app)
+        .post('/api/report/generate')
+        .send({ featureId: 'no-existe' })
+        .expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_REQUEST_BODY');
+    });
+
+    it('con un "featureId" válido, el reporte solo incluye esa feature y la respuesta lo confirma', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+      await selectTwoFeatures(context, app);
+
+      const response = await request(app)
+        .post('/api/report/generate')
+        .send({ featureId: 'f0-inicio-de-sesion' })
+        .expect(201);
+
+      expect(response.body.featureId).toBe('f0-inicio-de-sesion');
+      expect(existsSync(join(context.reportsDir, 'features', 'f0-inicio-de-sesion.html'))).toBe(
+        true,
+      );
+      expect(existsSync(join(context.reportsDir, 'features', 'f1-checkout.html'))).toBe(false);
+
+      const indexHtml = await readFile(join(context.reportsDir, 'index.html'), 'utf-8');
+      expect(indexHtml).toContain('Inicio de sesión');
+      expect(indexHtml).not.toContain('Checkout');
+    });
+
+    it('sin "featureId" (default), sigue incluyendo TODAS las features seleccionadas', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+      await selectTwoFeatures(context, app);
+
+      const response = await request(app).post('/api/report/generate').expect(201);
+
+      expect(response.body.featureId).toBeNull();
+      expect(existsSync(join(context.reportsDir, 'features', 'f0-inicio-de-sesion.html'))).toBe(
+        true,
+      );
+      expect(existsSync(join(context.reportsDir, 'features', 'f1-checkout.html'))).toBe(true);
+    });
   });
 
   /** Selecciona "login.feature", marca AMBOS steps del scenario como pass, y genera el reporte — deja `context.reportsDir` con un `index.html` real. Compartida entre los describe de "publish-jira" y "publish-azure-devops". */
