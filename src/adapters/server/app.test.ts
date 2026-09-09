@@ -362,6 +362,34 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     expect(physicalPath).toContain(accentedFilename);
   });
 
+  it('sanea caracteres inválidos en Windows (":*?"<>|") del nombre del archivo, para que el .zip del reporte se pueda extraer en Windows', async () => {
+    const context = await buildContext(projectRoot);
+    const app = createApp(context);
+
+    const selectResponse = await request(app)
+      .post('/api/session/select')
+      .send({ featureIds: ['login.feature'] })
+      .expect(201);
+    const stepId: string = selectResponse.body.currentStep.step.id;
+
+    const pngBuffer = await makePngBuffer();
+    // Nombre típico de screenshot con timestamp ISO — el ':' es válido en
+    // ext4 (donde corre este server) pero inválido en NTFS: sin sanear, el
+    // archivo se guarda bien acá pero rompe al extraer el .zip en Windows.
+    const unsafeFilename = 'evidencia-2024-01-01T10:32:15.png';
+    const evidenceResponse = await request(app)
+      .post(`/api/session/step/${stepId}/evidence`)
+      .attach('files', pngBuffer, unsafeFilename)
+      .expect(201);
+
+    const evidenceFile = evidenceResponse.body.evidenceFiles[0];
+    expect(evidenceFile.originalFilename).toBe('evidencia-2024-01-01T10_32_15.png');
+    expect(evidenceFile.originalFilename).not.toContain(':');
+
+    const physicalPath = join(context.evidenceBaseDir, evidenceFile.path);
+    expect(existsSync(physicalPath)).toBe(true);
+  });
+
   it('DELETE evidencia la quita de la lista del step Y borra el archivo físico (+ thumbnail)', async () => {
     const context = await buildContext(projectRoot);
     const app = createApp(context);
