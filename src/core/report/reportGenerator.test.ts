@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -608,6 +608,48 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     await generator.generate(sessionState, outputDir);
 
     expect(existsSync(join(outputDir, 'assets', 'video-icon.svg'))).toBe(true);
+  });
+
+  it('sanea, al copiarla al reporte, evidencia que ya estaba guardada en disco con un nombre inválido en Windows (datos previos a este fix)', async () => {
+    const loginFeatureId = sessionState.selectedFeatures[0]!.id;
+    const loginScenarioId = sessionState.selectedFeatures[0]!.scenarios[0]!.id;
+    const loginStep0 = sessionState.selectedFeatures[0]!.scenarios[0]!.steps[0]!;
+
+    // Simula un archivo guardado en disco ANTES de que evidenceStore.save()
+    // empezara a sanear el nombre en el origen: el server corre en Linux
+    // (ext4), donde ':' es un carácter de archivo válido, a diferencia de NTFS.
+    const legacyDir = join(evidenceBaseDir, loginFeatureId, loginScenarioId, loginStep0.id);
+    await mkdir(legacyDir, { recursive: true });
+    const legacyFilename = 'captura-2024-01-01T10:32:15.png';
+    await writeFile(join(legacyDir, legacyFilename), await makePngBuffer());
+
+    const legacyEvidence = (await createEvidenceStore(evidenceBaseDir).list(loginStep0.id)).find(
+      (file) => file.originalFilename === legacyFilename,
+    )!;
+    loginStep0.evidenceFileIds.push(legacyEvidence.id);
+
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(sessionState, outputDir);
+
+    const sanitizedRelPath = `${loginFeatureId}/${loginScenarioId}/${loginStep0.id}/captura-2024-01-01T10_32_15.png`;
+    const legacyRelPath = `${loginFeatureId}/${loginScenarioId}/${loginStep0.id}/${legacyFilename}`;
+
+    const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
+    expect(loginHtml).toContain(`assets/${sanitizedRelPath}`);
+    expect(loginHtml).not.toContain(`assets/${legacyRelPath}`);
+
+    expect(existsSync(join(outputDir, 'assets', sanitizedRelPath))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', legacyRelPath))).toBe(false);
+
+    // El archivo ORIGINAL en evidenceBaseDir no se toca (renombrarlo ahí
+    // cambiaría su id, calculado a partir del nombre, y rompería
+    // `step.evidenceFileIds`) — solo la copia dentro del reporte se sanea.
+    expect(existsSync(join(legacyDir, legacyFilename))).toBe(true);
   });
 
   it('rechaza (con ReportGenerationError) si el templateDir no provee los templates obligatorios', async () => {

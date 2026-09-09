@@ -75,7 +75,10 @@ export function createEvidenceStore(baseDir: string, deps: EvidenceStoreDeps = {
     const stepDir = join(evidenceRoot, featureId, scenarioId, stepId);
     await mkdir(stepDir, { recursive: true });
 
-    const originalFilename = await resolveNonCollidingFilename(stepDir, input.originalFilename);
+    const originalFilename = await resolveNonCollidingFilename(
+      stepDir,
+      sanitizeFilenameForWindows(input.originalFilename),
+    );
     const filePath = join(stepDir, originalFilename);
     await writeFile(filePath, buffer);
 
@@ -175,6 +178,26 @@ function computeEvidenceId(
 /** Convierte una ruta absoluta a una ruta relativa a `baseDir`, siempre con `/` (portable entre OS). */
 function toPortablePath(baseDir: string, absolutePath: string): string {
   return relative(baseDir, absolutePath).split(sep).join('/');
+}
+
+/**
+ * Reemplaza los caracteres prohibidos en nombres de archivo de Windows
+ * (`< > : " / \ | ? *` y los códigos de control) por `_`, y quita
+ * espacios/puntos finales (también inválidos en NTFS). Se aplica en `save()`
+ * ANTES de escribir a disco, así el nombre saneado es el único que existe
+ * de acá en más: nombre en disco, entry del .zip del reporte
+ * (`reportGenerator.ts` copia `EvidenceFile.path` tal cual a
+ * `outputDir/assets/...`, y ese árbol es justo lo que se comprime), y `src`
+ * del reporte HTML. Exportada (no solo interna a `save()`) porque
+ * `reportGenerator.ts` también la usa para sanear, al copiar, evidencia que
+ * ya estaba guardada en disco ANTES de este fix (ver
+ * `sanitizeRelativeAssetPath` ahí) — sin eso, sesiones viejas con archivos
+ * tipo `evidencia-2024-01-01T10:32:15.png` seguirían generando un .zip que
+ * Windows no puede abrir aunque las subidas nuevas ya vengan limpias.
+ */
+export function sanitizeFilenameForWindows(filename: string): string {
+  const sanitized = filename.replace(/[\x00-\x1f<>:"/\\|?*]/g, '_').replace(/[. ]+$/, '');
+  return sanitized.length > 0 ? sanitized : '_';
 }
 
 async function listSubdirectories(dir: string): Promise<string[]> {

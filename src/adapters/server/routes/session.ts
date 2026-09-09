@@ -3,6 +3,7 @@ import { extname } from 'node:path';
 import { Router } from 'express';
 import multer from 'multer';
 
+import { sanitizeFilenameForWindows } from '../../../core/evidence/index.js';
 import {
   EvidenceFileTooLargeError,
   QaError,
@@ -80,29 +81,6 @@ const upload = multer({ storage: multer.memoryStorage() });
  */
 function decodeMultipartFilename(originalname: string): string {
   return Buffer.from(originalname, 'latin1').toString('utf-8');
-}
-
-/**
- * Reemplaza los caracteres prohibidos en nombres de archivo de Windows
- * (`< > : " / \ | ? *` y los códigos de control) por `_`, y quita
- * espacios/puntos finales (también inválidos en NTFS). En Linux — donde
- * corre este server — un `originalFilename` con, por ejemplo, un `:` (común
- * en timestamps ISO tipo `evidencia-2024-01-01T10:32:15.png`) se guarda sin
- * problema en ext4; el bug aparece recién cuando ese mismo nombre queda
- * como entry de `archive.directory(reportsDir, false)` (ver `reportZip.ts`)
- * dentro del .zip subido a Jira/Azure DevOps, y el usuario de Windows no
- * puede extraerlo (o el extractor lo salta/renombra) — el síntoma
- * reportado de "zip corrupto"/"index.html sin imágenes" en Windows pero no
- * en Linux. Igual que `decodeMultipartFilename`, se corrige en el origen,
- * ANTES de validar extensión/tamaño o guardar, para que el nombre saneado
- * sea el único que existe de acá en más (nombre en disco, entry del zip,
- * `src` del reporte HTML).
- */
-function sanitizeFilenameForWindows(originalname: string): string {
-  const sanitized = originalname
-    .replace(/[\x00-\x1f<>:"/\\|?*]/g, '_')
-    .replace(/[. ]+$/, '');
-  return sanitized.length > 0 ? sanitized : '_';
 }
 
 function extractFeatureIds(body: unknown): string[] {
