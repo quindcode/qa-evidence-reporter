@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Jimp } from 'jimp';
@@ -25,6 +25,17 @@ const FIXED_GENERATED_AT = '2026-01-15T10:00:00.000Z';
 async function makePngBuffer(): Promise<Buffer> {
   const image = new Jimp({ width: 10, height: 10, color: 0x2266ffff });
   return image.getBuffer('image/png');
+}
+
+/**
+ * Ruta relativa a `outputDir/assets/` que le corresponde a la COPIA de una
+ * evidencia dentro del reporte — ver `evidenceAssetFilename` en
+ * `reportGenerator.ts`: `evidence/{file.id}{extensión}`, no
+ * `{featureId}/{scenarioId}/{stepId}/{nombre}` (esa es la ruta de origen en
+ * `evidenceBaseDir`, expuesta en `EvidenceFile.path`).
+ */
+function evidenceAssetPath(file: EvidenceFile): string {
+  return `evidence/${file.id}${extname(file.originalFilename)}`;
 }
 
 /**
@@ -206,7 +217,7 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     await generator.generate(sessionState, outputDir);
     expect(existsSync(join(outputDir, 'features', 'f0-login.html'))).toBe(true);
     expect(existsSync(join(outputDir, 'features', 'f1-checkout.html'))).toBe(true);
-    expect(existsSync(join(outputDir, 'assets', loginEvidence.path))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', evidenceAssetPath(loginEvidence)))).toBe(true);
 
     // Segunda corrida: sesión nueva con SOLO Login seleccionado (como pasa
     // al volver a `run` con una selección más chica que la sesión previa).
@@ -398,12 +409,14 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
 
     // La evidencia referenciada aparece en el HTML con una ruta relativa
     // (basePath '../' porque esta página vive en outputDir/features/).
-    const expectedEvidenceHref = `../assets/${defectEvidence.path}`;
+    const expectedEvidenceHref = `../assets/${evidenceAssetPath(defectEvidence)}`;
     expect(checkoutHtml).toContain(expectedEvidenceHref);
 
     // Y existe físicamente copiada dentro de outputDir/assets/...
-    expect(existsSync(join(outputDir, 'assets', defectEvidence.path))).toBe(true);
-    expect(existsSync(join(outputDir, 'assets', defectEvidence.thumbnailPath!))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', evidenceAssetPath(defectEvidence)))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', `evidence/${defectEvidence.id}.thumb.png`))).toBe(
+      true,
+    );
   });
 
   it('el detalle de Login muestra la evidencia de imagen del step en pass', async () => {
@@ -417,7 +430,7 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
 
     const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
     expect(loginHtml).toContain('login-ok.png');
-    expect(existsSync(join(outputDir, 'assets', loginEvidence.path))).toBe(true);
+    expect(existsSync(join(outputDir, 'assets', evidenceAssetPath(loginEvidence)))).toBe(true);
   });
 
   it('no genera ninguna referencia http(s):// ni a CDNs externos en el HTML generado', async () => {
@@ -636,20 +649,96 @@ describe('createReportGenerator + createHandlebarsTemplateEngine (integración c
     );
     await generator.generate(sessionState, outputDir);
 
-    const sanitizedRelPath = `${loginFeatureId}/${loginScenarioId}/${loginStep0.id}/captura-2024-01-01T10_32_15.png`;
-    const legacyRelPath = `${loginFeatureId}/${loginScenarioId}/${loginStep0.id}/${legacyFilename}`;
+    // El nombre de archivo dentro del reporte es `evidence/{id}.png` (ver
+    // `evidenceAssetFilename` en `reportGenerator.ts`) — plano y basado en el
+    // id, así que el ':' del nombre original ni siquiera llega a formar
+    // parte de esa ruta.
+    const reportAssetPath = evidenceAssetPath(legacyEvidence);
 
     const loginHtml = await readFile(join(outputDir, 'features', 'f0-login.html'), 'utf-8');
-    expect(loginHtml).toContain(`assets/${sanitizedRelPath}`);
-    expect(loginHtml).not.toContain(`assets/${legacyRelPath}`);
+    expect(loginHtml).toContain(`assets/${reportAssetPath}`);
+    // El nombre original con ':' puede seguir apareciendo como texto (alt de
+    // la imagen), pero nunca dentro de una ruta de `assets/`.
+    expect(loginHtml).not.toContain(`assets/${legacyFilename}`);
 
-    expect(existsSync(join(outputDir, 'assets', sanitizedRelPath))).toBe(true);
-    expect(existsSync(join(outputDir, 'assets', legacyRelPath))).toBe(false);
+    expect(existsSync(join(outputDir, 'assets', reportAssetPath))).toBe(true);
 
     // El archivo ORIGINAL en evidenceBaseDir no se toca (renombrarlo ahí
     // cambiaría su id, calculado a partir del nombre, y rompería
     // `step.evidenceFileIds`) — solo la copia dentro del reporte se sanea.
     expect(existsSync(join(legacyDir, legacyFilename))).toBe(true);
+  });
+
+  it('con nombres de feature/scenario largos, la ruta de la evidencia copiada al reporte se mantiene corta (Windows falla con rutas de más de 260 caracteres)', async () => {
+    // `buildScenarioId`/`buildStepId` (`core/session/ids.ts`) anidan el id
+    // COMPLETO del padre en cada nivel — con nombres de Gherkin descriptivos,
+    // la ruta de evidencia bajo `evidenceBaseDir`
+    // (`{featureId}/{scenarioId}/{stepId}/{archivo}`) crece rápido y supera
+    // fácilmente el límite de 260 caracteres de `MAX_PATH` en Windows si se
+    // reusara tal cual para la copia dentro del reporte (bug real reportado:
+    // el .zip se extraía bien, pero la imagen quedaba "inaccesible").
+    const longFeatureName =
+      'Ejemplo de inicio de sesión con validaciones extendidas de seguridad y auditoría completa';
+    const longScenarioName =
+      'Inicio de sesión exitoso con credenciales válidas y verificación de doble factor habilitada';
+
+    const longFeatures: ParsedFeature[] = [
+      {
+        name: longFeatureName,
+        description: '',
+        tags: [],
+        language: 'en',
+        filePath: 'login-largo.feature',
+        scenarios: [
+          {
+            name: longScenarioName,
+            tags: [],
+            isOutlineExample: false,
+            steps: [{ keyword: 'Given', text: 'a registered user', fromBackground: false }],
+          },
+        ],
+      },
+    ];
+
+    const longSessionEngine = createSessionEngine(
+      join(evidenceBaseDir, '.qa-evidence-reporter/session-long.json'),
+    );
+    const created = await longSessionEngine.createSession(longFeatures, 'Proyecto Demo');
+    const longFeatureId = created.selectedFeatures[0]!.id;
+    const longScenarioId = created.selectedFeatures[0]!.scenarios[0]!.id;
+    const longStepId = created.selectedFeatures[0]!.scenarios[0]!.steps[0]!.id;
+
+    // Confirma la premisa del bug: la ruta de ORIGEN ya es larga por sí sola.
+    const sourceRelativePath = `${longFeatureId}/${longScenarioId}/${longStepId}/evidencia.png`;
+    expect(sourceRelativePath.length).toBeGreaterThan(200);
+
+    const evidenceStore = createEvidenceStore(evidenceBaseDir);
+    const longEvidence = await evidenceStore.save({
+      featureId: longFeatureId,
+      scenarioId: longScenarioId,
+      stepId: longStepId,
+      originalFilename: 'evidencia-de-inicio-de-sesion.png',
+      buffer: await makePngBuffer(),
+    });
+    await longSessionEngine.setStepResult(longStepId, 'pass');
+    await longSessionEngine.addEvidence(longStepId, longEvidence.id);
+
+    const templateEngine = createHandlebarsTemplateEngine(DEFAULT_TEMPLATE_DIR);
+    const generator = createReportGenerator(
+      { projectName: 'Proyecto Demo', evidenceBaseDir },
+      templateEngine,
+      { clock: () => FIXED_GENERATED_AT },
+    );
+    await generator.generate(longSessionEngine.getState(), outputDir);
+
+    // `evidence/{id}.png` — el id es un hash de 16 hex, la ruta queda corta
+    // sin importar cuán descriptivos sean los nombres de feature/scenario.
+    const reportAssetPath = evidenceAssetPath(longEvidence);
+    expect(reportAssetPath.length).toBeLessThan(40);
+    expect(existsSync(join(outputDir, 'assets', reportAssetPath))).toBe(true);
+
+    const html = await readFile(join(outputDir, 'features', `${longFeatureId}.html`), 'utf-8');
+    expect(html).toContain(`assets/${reportAssetPath}`);
   });
 
   it('rechaza (con ReportGenerationError) si el templateDir no provee los templates obligatorios', async () => {

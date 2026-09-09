@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 
-import { createEvidenceStore, sanitizeFilenameForWindows } from '../evidence/index.js';
+import { createEvidenceStore } from '../evidence/index.js';
 import { ReportGenerationError } from '../types/errors.js';
 import type { EvidenceFile, EvidenceStore } from '../types/evidence.js';
 import type {
@@ -223,49 +223,53 @@ async function copyDirRecursive(src: string, dest: string): Promise<void> {
   }
 }
 
+/** Mismo sufijo que `THUMBNAIL_SUFFIX` en `core/evidence/evidenceStore.ts` — un thumbnail siempre es PNG, sin importar la extensión del original. */
+const THUMBNAIL_ASSET_SUFFIX = '.thumb.png';
+
 /**
- * Sanea cada segmento de una ruta relativa de evidencia (`feature/scenario/step/archivo`)
- * con `sanitizeFilenameForWindows` — los segmentos de id ya son slugs seguros
- * (`core/session/ids.ts`), así que en la práctica esto solo afecta al
- * nombre de archivo final. Existe para limpiar, al armar el reporte,
- * evidencia que ya estaba guardada en disco con caracteres inválidos en
- * Windows ANTES de que `evidenceStore.save()` empezara a sanear en el
- * origen (ver `sanitizeFilenameForWindows` en `core/evidence/evidenceStore.ts`)
- * — sin esto, una sesión vieja con un archivo tipo
- * `evidencia-2024-01-01T10:32:15.png` seguiría generando un .zip que
- * Windows no puede abrir. Deliberadamente NO renombra el archivo original
- * en `evidenceBaseDir` (eso cambiaría `EvidenceFile.id`, que se deriva del
- * nombre — ver `computeEvidenceId` en `evidenceStore.ts` — y rompería las
- * referencias por id ya guardadas en `step.evidenceFileIds`): solo afecta
- * el nombre de la COPIA dentro de `outputDir/assets/...`, que se regenera
- * entera en cada `generate()`.
+ * Nombre de archivo de evidencia dentro del reporte: `{EvidenceFile.id}` (ya
+ * es un hash corto y determinístico de 16 hex — ver `computeEvidenceId` en
+ * `core/evidence/evidenceStore.ts`) + la extensión real del archivo. NO
+ * reusa `{featureId}/{scenarioId}/{stepId}/` (la ruta relativa a
+ * `evidenceBaseDir`) para la copia dentro de `outputDir/assets/`: como
+ * `buildScenarioId`/`buildStepId` (`core/session/ids.ts`) anidan el id
+ * completo del padre en cada nivel, esa ruta repite el texto del nombre de
+ * feature/scenario/step tres veces — con nombres de Gherkin descriptivos
+ * (`f0-ejemplo-de-inicio-de-sesion/f0-..._s0-inicio-de-sesion-exitoso-con-credenciales-validas/f0-..._s0-..._st0/imagen.png`)
+ * la ruta resultante bajo `outputDir/assets/...` superaba fácilmente los 260
+ * caracteres de `MAX_PATH` de Windows: el .zip se extraía "bien" pero el
+ * archivo de evidencia quedaba inaccesible ("no se ha podido acceder al
+ * archivo") aunque existiera. Un nombre plano de 16 hex + extensión nunca
+ * puede acercarse a ese límite, sin importar cuán largos sean los nombres
+ * de feature/scenario. Tampoco puede contener caracteres inválidos en
+ * Windows (el hash es hex, la extensión ya se valida contra
+ * `config.evidence.allowedFormats` al subir el archivo), así que esto
+ * también reemplaza el saneo de caracteres que hacía esta función antes.
  */
-function sanitizeRelativeAssetPath(relativePath: string): string {
-  return relativePath.split('/').map(sanitizeFilenameForWindows).join('/');
+function evidenceAssetFilename(evidenceFileId: string, extension: string): string {
+  return `${evidenceFileId}${extension}`;
 }
 
 /**
  * Copia un único archivo de evidencia (original o thumbnail) desde
- * `evidenceBaseDir` hacia `outputDir/assets/...`. `relativePath` es la ruta
- * tal cual la devuelve `EvidenceStore` (`EvidenceFile.path`/`.thumbnailPath`
- * en `core/types/evidence.ts`, relativa a `evidenceBaseDir`); el destino usa
- * la versión saneada de esa ruta (ver `sanitizeRelativeAssetPath`) para que
- * el .zip del reporte nunca contenga nombres inválidos en Windows, sin
- * importar si el archivo original en `evidenceBaseDir` ya venía sucio.
- * Devuelve esa ruta saneada para que el caller la use también en el `src`
- * del HTML — deben ser exactamente la misma ruta.
+ * `evidenceBaseDir` hacia `outputDir/assets/evidence/{destFilename}`
+ * (`destFilename` viene de `evidenceAssetFilename`, ver ahí por qué NO se
+ * reusa la ruta `{featureId}/{scenarioId}/{stepId}/` de origen). Devuelve
+ * esa ruta relativa a `assets/` para que el caller la use también en el
+ * `src`/`href` del HTML — deben ser exactamente la misma ruta.
  */
 async function copyEvidenceAsset(
   evidenceBaseDir: string,
   outputDir: string,
   relativePath: string,
+  destFilename: string,
 ): Promise<string> {
   const src = join(evidenceBaseDir, relativePath);
-  const sanitizedRelativePath = sanitizeRelativeAssetPath(relativePath);
-  const dest = join(outputDir, 'assets', sanitizedRelativePath);
+  const destRelativePath = `evidence/${destFilename}`;
+  const dest = join(outputDir, 'assets', destRelativePath);
   await mkdir(dirname(dest), { recursive: true });
   await copyFile(src, dest);
-  return sanitizedRelativePath;
+  return destRelativePath;
 }
 
 /** `"assets/" + relativePath`, siempre con `/` (portable), para usar como `EvidenceReportView.path`/`.thumbnailPath`. */
@@ -304,17 +308,27 @@ async function buildEvidenceViews(
     const file = filesById.get(evidenceFileId);
     if (!file) continue;
 
-    const sanitizedPath = await copyEvidenceAsset(evidenceBaseDir, outputDir, file.path);
-    const sanitizedThumbnailPath = file.thumbnailPath
-      ? await copyEvidenceAsset(evidenceBaseDir, outputDir, file.thumbnailPath)
+    const assetPath = await copyEvidenceAsset(
+      evidenceBaseDir,
+      outputDir,
+      file.path,
+      evidenceAssetFilename(file.id, extname(file.originalFilename)),
+    );
+    const thumbnailAssetPath = file.thumbnailPath
+      ? await copyEvidenceAsset(
+          evidenceBaseDir,
+          outputDir,
+          file.thumbnailPath,
+          evidenceAssetFilename(file.id, THUMBNAIL_ASSET_SUFFIX),
+        )
       : undefined;
 
     views.push({
       id: file.id,
       originalFilename: file.originalFilename,
       kind: file.kind,
-      path: toAssetPath(sanitizedPath),
-      thumbnailPath: sanitizedThumbnailPath ? toAssetPath(sanitizedThumbnailPath) : undefined,
+      path: toAssetPath(assetPath),
+      thumbnailPath: thumbnailAssetPath ? toAssetPath(thumbnailAssetPath) : undefined,
     });
   }
   return views;

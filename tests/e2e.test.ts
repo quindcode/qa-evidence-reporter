@@ -257,7 +257,12 @@ describe('e2e: sample-project de punta a punta (parser real + server real + repo
     expect(listing).toContain('f0-product-search.html');
     expect(listing).toContain('f1-carrito-de-compras.html');
     expect(listing).toContain('f2-inicio-de-sesion.html');
-    expect(listing).toContain('pantalla-inicial.png');
+    // La evidencia se copia al reporte como `assets/evidence/{id}.png` (ver
+    // `evidenceAssetFilename` en `reportGenerator.ts`), no con su nombre
+    // original ("pantalla-inicial.png") — ese nombre nested/redundante por
+    // feature+scenario+step podía superar el límite de 260 caracteres de
+    // Windows con nombres de Gherkin descriptivos.
+    expect(listing).toMatch(/assets\/evidence\/[0-9a-f]{16}\.png/);
 
     const extractedIndexHtml = execFileSync('unzip', ['-p', zipPath, 'index.html'], {
       encoding: 'utf-8',
