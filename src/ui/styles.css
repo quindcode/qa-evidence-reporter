@@ -638,6 +638,27 @@ body {
   color: var(--accent);
 }
 
+/* Recordatorio visible de los atajos de teclado del runner (P/F/S/N/B, ver
+   `useKeyboardShortcuts`) — antes solo se sugerían al pasar el mouse sobre
+   cada botón (`title="Atajo: X"`), lo que los hacía fáciles de no descubrir
+   nunca. Vive en `.current-step` (lo primero que se ve en cada step) para
+   que un QA nuevo lo note temprano, sin competir visualmente con el texto
+   del step. */
+.shortcuts-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.shortcuts-hint kbd {
+  font: inherit;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
 .panel {
   background: var(--bg-elevated);
   border: 1px solid var(--border);

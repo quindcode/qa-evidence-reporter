@@ -368,6 +368,10 @@ export function Runner({
                 </span>{' '}
                 {currentStep.step.step.text}
               </p>
+              <p class="shortcuts-hint">
+                Atajos: <kbd>P</kbd> pass · <kbd>F</kbd> fail · <kbd>S</kbd> skip · <kbd>N</kbd>{' '}
+                siguiente · <kbd>B</kbd> anterior
+              </p>
             </section>
 
             <section class="panel">
