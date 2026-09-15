@@ -45,6 +45,7 @@ const ERROR_STATUS_BY_CODE: Readonly<Record<string, number>> = {
   AZURE_DEVOPS_WORK_ITEM_NOT_FOUND: 404, // mismo criterio que JIRA_ISSUE_NOT_FOUND
   AZURE_DEVOPS_AUTHENTICATION_ERROR: 502, // mismo criterio que JIRA_AUTHENTICATION_ERROR
   AZURE_DEVOPS_REQUEST_ERROR: 502, // mismo criterio que JIRA_REQUEST_ERROR
+  FEATURE_SOURCE_DRIFT: 409, // el .feature cambió respecto al snapshot de la sesión — mismo criterio que SESSION_ALREADY_IN_PROGRESS
   // `adapters/server` (ver constantes arriba)
   [SESSION_ALREADY_IN_PROGRESS]: 409,
   [NOTHING_TO_REPORT]: 404,

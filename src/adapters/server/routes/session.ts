@@ -11,7 +11,14 @@ import {
   UnsupportedEvidenceFormatError,
 } from '../../../core/types/errors.js';
 import type { ParsedFeature } from '../../../core/types/parser.js';
-import type { SessionState, StepResult } from '../../../core/types/session.js';
+import {
+  assertScenarioEditable,
+  findEditableStep,
+  type ScenarioEditChanges,
+  type SessionState,
+  type StepResult,
+} from '../../../core/types/session.js';
+import type { ScenarioTextEdit } from '../../../core/parser/index.js';
 import type { ServerContext } from '../context.js';
 import {
   FEATURE_NOT_FOUND,
@@ -23,6 +30,7 @@ import {
 import {
   alreadySelectedRefIds,
   buildFeatureRefId,
+  findScenarioContext,
   findStepContext,
   loadCurrentSessionOrNull,
 } from '../sessionQueries.js';
@@ -101,6 +109,65 @@ function extractFeatureIds(body: unknown): string[] {
   }
 
   return featureIds;
+}
+
+/**
+ * Valida la FORMA del body de `PATCH /api/session/scenario/:scenarioId`
+ * (mismo nivel que el resto de este archivo — chequeos de tipo/estructura,
+ * no de reglas de negocio: eso lo valida `assertScenarioEditable`/
+ * `findEditableStep`, reutilizadas por `SessionEngine.editScenario`). Exige
+ * que al menos uno de `name`/`steps` venga con algo real — un PATCH vacío no
+ * tiene sentido.
+ */
+function parseScenarioEditBody(body: unknown): ScenarioEditChanges {
+  if (!body || typeof body !== 'object') {
+    throw new QaError(
+      'El body debe incluir "name" (string) y/o "steps" (array de { stepId, text }).',
+      INVALID_REQUEST_BODY,
+    );
+  }
+
+  const { name, steps } = body as { name?: unknown; steps?: unknown };
+
+  let parsedName: string | undefined;
+  if (name !== undefined) {
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      throw new QaError('"name" debe ser un string no vacío.', INVALID_REQUEST_BODY);
+    }
+    parsedName = name.trim();
+  }
+
+  let parsedSteps: Array<{ stepId: string; text: string }> | undefined;
+  if (steps !== undefined) {
+    if (!Array.isArray(steps) || steps.length === 0) {
+      throw new QaError('"steps" debe ser un array no vacío.', INVALID_REQUEST_BODY);
+    }
+    parsedSteps = steps.map((entry) => {
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        typeof (entry as { stepId?: unknown }).stepId !== 'string' ||
+        typeof (entry as { text?: unknown }).text !== 'string' ||
+        (entry as { text: string }).text.trim().length === 0
+      ) {
+        throw new QaError(
+          'Cada elemento de "steps" debe ser { stepId: string, text: string } con "text" no vacío.',
+          INVALID_REQUEST_BODY,
+        );
+      }
+      const { stepId, text } = entry as { stepId: string; text: string };
+      return { stepId, text: text.trim() };
+    });
+  }
+
+  if (parsedName === undefined && parsedSteps === undefined) {
+    throw new QaError(
+      'El body debe corregir al menos "name" o "steps" — no puede estar vacío.',
+      INVALID_REQUEST_BODY,
+    );
+  }
+
+  return { name: parsedName, steps: parsedSteps };
 }
 
 /**
@@ -386,6 +453,74 @@ export function createSessionRouter(context: ServerContext, services: CoreServic
         defectDescription: body.defectDescription,
         notes: body.notes,
       });
+      res.json({ session: updated, currentStep: services.sessionEngine.getCurrentStep() });
+    }),
+  );
+
+  /**
+   * `PATCH /api/session/scenario/:scenarioId` — corrige el nombre y/o el
+   * texto de steps de un caso de prueba TODAVÍA no ejecutado (ver
+   * ARCHITECTURE.md, "Edición de casos de prueba pendientes"): permite
+   * arreglar un typo sin frenar la ejecución ni perder evidencia ya cargada
+   * en otros steps/scenarios.
+   *
+   * Orden deliberado (archivo `.feature` primero, `session.json` después):
+   * si `featureWriter.updateScenario` lanza `FeatureSourceDriftError` (el
+   * archivo cambió desde que se snapshoteó la sesión), no se toca la sesión.
+   * Si `sessionEngine.editScenario` fallara justo después de escribir el
+   * archivo (no debería — reusa las mismas `assertScenarioEditable`/
+   * `findEditableStep` ya verificadas acá abajo), el peor caso es un archivo
+   * ya corregido con una sesión que todavía no lo refleja — mismo trade-off
+   * ya aceptado en este archivo para `DELETE .../evidence` (ver su JSDoc más
+   * abajo).
+   */
+  router.patch(
+    '/session/scenario/:scenarioId',
+    asyncHandler(async (req, res) => {
+      const session = await requireSession(context, services);
+      const scenarioId = requireStringParam(req.params.scenarioId, 'scenarioId');
+      const changes = parseScenarioEditBody(req.body);
+
+      const { scenario, sourceFilePath } = findScenarioContext(session, scenarioId);
+      assertScenarioEditable(scenario);
+      if (!sourceFilePath) {
+        throw new QaError(
+          `El escenario "${scenario.name}" no tiene un archivo .feature de origen conocido.`,
+          INVALID_REQUEST_BODY,
+        );
+      }
+
+      const edit: ScenarioTextEdit = { steps: [] };
+      if (changes.name !== undefined) {
+        if (!scenario.sourceLocation) {
+          throw new QaError(
+            `El escenario "${scenario.name}" no tiene una línea de origen conocida en el .feature.`,
+            INVALID_REQUEST_BODY,
+          );
+        }
+        edit.name = {
+          line: scenario.sourceLocation.line,
+          oldText: scenario.name,
+          newText: changes.name,
+        };
+      }
+      for (const stepChange of changes.steps ?? []) {
+        const step = findEditableStep(scenario, stepChange.stepId);
+        if (!step.step.sourceLocation) {
+          throw new QaError(
+            `El step "${stepChange.stepId}" no tiene una línea de origen conocida en el .feature.`,
+            INVALID_REQUEST_BODY,
+          );
+        }
+        edit.steps.push({
+          line: step.step.sourceLocation.line,
+          oldText: step.step.text,
+          newText: stepChange.text,
+        });
+      }
+
+      await services.featureWriter.updateScenario(sourceFilePath, edit);
+      const updated = await services.sessionEngine.editScenario(scenarioId, changes);
       res.json({ session: updated, currentStep: services.sessionEngine.getCurrentStep() });
     }),
   );

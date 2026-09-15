@@ -1,4 +1,5 @@
-import type { ParsedFeature, ParsedStep } from './parser.js';
+import { InvalidStepTransitionError } from './errors.js';
+import type { ParsedFeature, ParsedStep, SourceLocation } from './parser.js';
 
 /**
  * Resultado que un QA asigna a un step tras ejecutarlo manualmente.
@@ -33,14 +34,13 @@ export type StepResult = 'pass' | 'fail' | 'skip' | 'pending';
  * para desambiguar.
  *
  * Decisión de diseño (referencia al step original): en vez de solo guardar
- * `keyword`/`text`/línea sueltos, se conserva el `ParsedStep` completo tal
- * cual lo produjo `core/parser` (incluye `fromBackground`). No se agrega un
- * número de línea porque `ParsedStep` no lo expone (ver su JSDoc en
- * `core/types/parser.ts`): la info de línea solo existe en el AST crudo de
- * `@cucumber/gherkin`, antes de compilarse a Pickle, y `core/parser` decidió
- * no propagarla porque ningún consumidor la necesitaba hasta ahora. Si una
- * fase futura la necesita, se agrega a `ParsedStep` en `core/parser`, no
- * aquí.
+ * `keyword`/`text` sueltos, se conserva el `ParsedStep` completo tal cual lo
+ * produjo `core/parser` (incluye `fromBackground` y, desde la feature de
+ * edición de casos de prueba pendientes, `sourceLocation` — ver su JSDoc en
+ * `core/types/parser.ts`). `sourceLocation` es lo que permite a
+ * `adapters/server` (`PATCH /api/session/scenario/:scenarioId`) reescribir
+ * la línea exacta del `.feature` de origen al editar el texto de un step
+ * desde la UI (ver `core/parser/featureWriter.ts`).
  *
  * Decisión de diseño (`defectDescription` obligatorio en fail): la interfaz
  * lo modela como opcional (`string | undefined`) porque tiene sentido en
@@ -99,11 +99,35 @@ export interface StepExecution {
  *    `'pass'`.
  */
 export interface ScenarioExecution {
-  /** Id determinístico: `"{featureId}_s{scenarioIndex}-{slug(name)}"`. */
+  /**
+   * Id determinístico: `"{featureId}_s{scenarioIndex}-{slug(name)}"`. Nota:
+   * si `name` se edita después de crear la sesión (ver `editScenario` más
+   * abajo), `id` NO se regenera — queda con el slug del nombre ORIGINAL.
+   * Redundancia cosmética aceptada a propósito, mismo criterio ya usado para
+   * las carpetas de evidencia (ver ARCHITECTURE.md, Fase 2): `id` debe seguir
+   * siendo estable durante toda la sesión (evidencia/resultados ya lo usan
+   * como referencia), así que solo `name` cambia.
+   */
   id: string;
   name: string;
   tags: string[];
   steps: StepExecution[];
+  /**
+   * `true` si este scenario proviene de una fila de `Examples` de un
+   * `Scenario Outline` (copiado de `ParsedScenario.isOutlineExample`, ver
+   * `core/types/parser.ts`). Un scenario así NUNCA es editable desde la UI
+   * (ver `assertScenarioEditable` más abajo): todas las filas expandidas de
+   * un mismo Outline comparten la línea de origen en el `.feature` y su
+   * texto ya viene interpolado, así que no hay una línea propia segura para
+   * reescribir.
+   */
+  isOutlineExample: boolean;
+  /**
+   * Línea del `Scenario:`/`Escenario:` en el `.feature` de origen (copiado de
+   * `ParsedScenario.sourceLocation`). `undefined` cuando `isOutlineExample`
+   * es `true` (mismo motivo que arriba).
+   */
+  sourceLocation?: SourceLocation;
 }
 
 /**
@@ -183,6 +207,20 @@ export interface SetStepResultOptions {
   defectDescription?: string;
   /** Si se provee, reemplaza la nota del step. */
   notes?: string;
+}
+
+/**
+ * Cambios pedidos por `SessionEngine.editScenario`: corregir el nombre del
+ * scenario y/o el texto de uno o más de sus steps propios (no Background,
+ * ver `assertScenarioEditable`/`findEditableStep`). Ambos campos son
+ * opcionales pero al menos uno debe traer algo real — el caller
+ * (`adapters/server`) es responsable de no llamar con un objeto vacío.
+ */
+export interface ScenarioEditChanges {
+  /** Nuevo nombre del scenario, si se quiere corregir. */
+  name?: string;
+  /** Nuevo texto por step, identificado por `StepExecution.id`. */
+  steps?: Array<{ stepId: string; text: string }>;
 }
 
 /**
@@ -325,6 +363,27 @@ export interface SessionEngine {
   addNotes(stepId: string, notes: string): Promise<SessionState>;
 
   /**
+   * Corrige el nombre y/o el texto de uno o más steps de un scenario TODAVÍA
+   * no ejecutado (ver `assertScenarioEditable`: lanza `InvalidStepTransitionError`
+   * si el scenario es `isOutlineExample`, o si alguno de sus steps ya tiene
+   * `result !== 'pending'` — el caso de prueba completo se bloquea apenas se
+   * le asigna cualquier resultado, no solo el step corregido). También lanza
+   * `InvalidStepTransitionError` si `scenarioId` no existe, si algún
+   * `stepId` de `changes.steps` no pertenece a ese scenario, o si pertenece a
+   * un step de Background (`step.fromBackground`, ver `findEditableStep`) —
+   * nunca editable, sus steps son compartidos por todos los scenarios de la
+   * feature.
+   *
+   * Deliberadamente NO reescribe el `.feature` de origen: `core/session` solo
+   * conoce `session.json`. Reescribir el archivo (ver
+   * `core/parser/featureWriter.ts`) es responsabilidad de quien orquesta
+   * ambos pasos — `adapters/server` (`PATCH /api/session/scenario/:scenarioId`),
+   * que llama al `FeatureWriter` ANTES de llamar acá, mismo criterio de
+   * separación que ya usa el proyecto entre `core/session`/`core/evidence`.
+   */
+  editScenario(scenarioId: string, changes: ScenarioEditChanges): Promise<SessionState>;
+
+  /**
    * Cierra la sesión actual: borra `session.json` del disco (no-op si no
    * existe) y limpia el estado en memoria — después de `close()`,
    * `getState()`/`getCurrentStep()` vuelven a lanzar `SessionNotFoundError`
@@ -364,4 +423,50 @@ function deriveFromResults(results: StepResult[]): StepResult {
   if (results.some((result) => result === 'pending')) return 'pending';
   if (results.some((result) => result === 'skip')) return 'skip';
   return 'pass';
+}
+
+/**
+ * Valida que `scenario` sea editable desde la UI (ver `SessionEngine.editScenario`):
+ * ningún step suyo tiene todavía un resultado asignado (`result !== 'pending'`
+ * bloquea el caso de prueba COMPLETO, no solo el step marcado — mismo
+ * criterio que ya usa `setStepResult` para la cascada de skip/fail) y no
+ * proviene de un `Scenario Outline` (`isOutlineExample`). Función pura (sin
+ * mutar nada): la reutilizan tanto `SessionEngine.editScenario` como
+ * `adapters/server` (para fallar rápido, antes de tocar el `.feature`, con el
+ * mismo mensaje). Lanza `InvalidStepTransitionError`, no devuelve nada.
+ */
+export function assertScenarioEditable(scenario: ScenarioExecution): void {
+  if (scenario.isOutlineExample) {
+    throw new InvalidStepTransitionError(
+      `el escenario "${scenario.name}" proviene de un Scenario Outline y no se puede editar desde la UI.`,
+    );
+  }
+  if (scenario.steps.some((step) => step.result !== 'pending')) {
+    throw new InvalidStepTransitionError(
+      `el caso de prueba "${scenario.name}" ya tiene un resultado asignado — no se puede editar.`,
+    );
+  }
+}
+
+/**
+ * Busca, dentro de `scenario`, el `StepExecution` con id `stepId` y valida
+ * que sea editable: debe pertenecer a `scenario` y no provenir de un
+ * `Background` (`step.step.fromBackground`) — sus steps son compartidos por
+ * todos los scenarios de la feature, nunca editables desde acá. Función pura,
+ * mismo criterio de reuso que `assertScenarioEditable`. Lanza
+ * `InvalidStepTransitionError` si no se cumple alguna de las dos condiciones.
+ */
+export function findEditableStep(scenario: ScenarioExecution, stepId: string): StepExecution {
+  const step = scenario.steps.find((candidate) => candidate.id === stepId);
+  if (!step) {
+    throw new InvalidStepTransitionError(
+      `el step "${stepId}" no pertenece al escenario "${scenario.id}".`,
+    );
+  }
+  if (step.step.fromBackground) {
+    throw new InvalidStepTransitionError(
+      `el step "${stepId}" pertenece a un Background compartido por toda la feature — no se puede editar desde la UI.`,
+    );
+  }
+  return step;
 }

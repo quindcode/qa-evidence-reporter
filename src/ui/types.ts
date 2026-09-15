@@ -19,10 +19,17 @@
 
 export type StepResult = 'pass' | 'fail' | 'skip' | 'pending';
 
+/** Espejo de `SourceLocation` (`core/types/parser.ts`) — ver `ParsedStepSummary.sourceLocation`. */
+export interface SourceLocation {
+  line: number;
+}
+
 export interface ParsedStepSummary {
   keyword: 'Given' | 'When' | 'Then';
   text: string;
   fromBackground: boolean;
+  /** `undefined` cuando el scenario dueño es un `Scenario Outline` expandido — ver `isStepEditable`. */
+  sourceLocation?: SourceLocation;
 }
 
 export interface StepExecution {
@@ -43,6 +50,10 @@ export interface ScenarioExecution {
   name: string;
   tags: string[];
   steps: StepExecution[];
+  /** `true` si viene de una fila de `Examples` de un `Scenario Outline` — nunca editable, ver `isScenarioEditable`. */
+  isOutlineExample: boolean;
+  /** `undefined` cuando `isOutlineExample` es `true`. */
+  sourceLocation?: SourceLocation;
 }
 
 export interface FeatureExecution {
@@ -200,6 +211,30 @@ function deriveFromResults(results: StepResult[]): StepResult {
   if (results.some((result) => result === 'pending')) return 'pending';
   if (results.some((result) => result === 'skip')) return 'skip';
   return 'pass';
+}
+
+/**
+ * `true` si `scenario` se puede editar desde la UI (nombre + texto de sus
+ * steps propios) — mismo criterio que `assertScenarioEditable`
+ * (`core/types/session.ts`), duplicado acá por la misma razón que el resto
+ * de este archivo: ningún step tiene todavía un resultado asignado, y el
+ * scenario no viene de un `Scenario Outline`. El server vuelve a validar
+ * esto mismo en `PATCH /api/session/scenario/:scenarioId` — este helper solo
+ * decide si mostrar el botón de edición.
+ */
+export function isScenarioEditable(scenario: ScenarioExecution): boolean {
+  return (
+    !scenario.isOutlineExample && scenario.steps.every((step) => step.result === 'pending')
+  );
+}
+
+/**
+ * `true` si `step` (dentro de `scenario`) se puede editar — mismo criterio
+ * que `findEditableStep` (`core/types/session.ts`): el scenario completo debe
+ * ser editable Y el step no debe provenir de un `Background` compartido.
+ */
+export function isStepEditable(scenario: ScenarioExecution, step: StepExecution): boolean {
+  return isScenarioEditable(scenario) && !step.step.fromBackground;
 }
 
 /**

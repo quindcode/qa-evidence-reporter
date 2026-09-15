@@ -87,6 +87,47 @@ describe('createGherkinParser', () => {
       ]);
     });
 
+    it('expone sourceLocation (línea de origen) para scenarios/steps que NO vienen de un Outline', async () => {
+      const feature = await parser.parseFile(fixture('simple.feature'));
+      const [scenario] = feature.scenarios;
+
+      expect(scenario.sourceLocation).toEqual({ line: 5 });
+      expect(scenario.steps.map((s) => s.sourceLocation)).toEqual([
+        { line: 6 },
+        { line: 7 },
+        { line: 8 },
+      ]);
+    });
+
+    it('sourceLocation de un step propio de scenario, pero NO de un step de Background', async () => {
+      const feature = await parser.parseFile(fixture('background.feature'));
+      const [addItem] = feature.scenarios;
+
+      expect(addItem.sourceLocation).toEqual({ line: 7 });
+      // Los 2 primeros steps vienen del Background (líneas 4-5 del fixture):
+      // nunca llevan sourceLocation, sin importar que el scenario en sí sí
+      // sea editable — ver JSDoc de `FeatureIndex.stepsById`.
+      expect(addItem.steps[0].fromBackground).toBe(true);
+      expect(addItem.steps[0].sourceLocation).toBeUndefined();
+      expect(addItem.steps[1].fromBackground).toBe(true);
+      expect(addItem.steps[1].sourceLocation).toBeUndefined();
+      // Los 2 últimos son propios del scenario: sí llevan su línea real.
+      expect(addItem.steps[2].sourceLocation).toEqual({ line: 8 });
+      expect(addItem.steps[3].sourceLocation).toEqual({ line: 9 });
+    });
+
+    it('nunca expone sourceLocation para un scenario/step expandido de Scenario Outline', async () => {
+      const feature = await parser.parseFile(fixture('outline.feature'));
+
+      for (const scenario of feature.scenarios) {
+        expect(scenario.isOutlineExample).toBe(true);
+        expect(scenario.sourceLocation).toBeUndefined();
+        for (const step of scenario.steps) {
+          expect(step.sourceLocation).toBeUndefined();
+        }
+      }
+    });
+
     it('lee tags de Feature y de Scenario por separado', async () => {
       const feature = await parser.parseFile(fixture('tags.feature'));
 

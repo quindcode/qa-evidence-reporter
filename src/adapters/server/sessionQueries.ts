@@ -2,7 +2,12 @@ import { relative } from 'node:path';
 
 import { InvalidStepTransitionError, SessionNotFoundError } from '../../core/types/errors.js';
 import type { ParsedFeature } from '../../core/types/parser.js';
-import type { SessionEngine, SessionState, StepExecution } from '../../core/types/session.js';
+import type {
+  ScenarioExecution,
+  SessionEngine,
+  SessionState,
+  StepExecution,
+} from '../../core/types/session.js';
 
 /**
  * Id estable para un `ParsedFeature` TODAVÍA no seleccionado en ninguna
@@ -112,4 +117,33 @@ export function findStepContext(state: SessionState, stepId: string): StepContex
   }
 
   throw new InvalidStepTransitionError(`no existe un step con id "${stepId}" en la sesión actual.`);
+}
+
+/** Contexto de un scenario arbitrario — misma idea que `StepContext`, un nivel más arriba. */
+export interface ScenarioContext {
+  featureId: string;
+  /** `FeatureExecution.sourceFilePath` de la feature dueña (ver su JSDoc en `core/types/session.ts`). */
+  sourceFilePath: string | undefined;
+  scenario: ScenarioExecution;
+}
+
+/**
+ * Busca un `scenarioId` arbitrario en TODO el árbol de `state` y devuelve su
+ * contexto — usado por `PATCH /api/session/scenario/:scenarioId`
+ * (`routes/session.ts`) para saber en qué archivo `.feature` reescribir antes
+ * de llamar a `SessionEngine.editScenario`. Mismo criterio que
+ * `findStepContext`: vive acá (no en `SessionEngine`) porque es un caso de
+ * uso puramente de transporte sobre la estructura pública `SessionState`.
+ */
+export function findScenarioContext(state: SessionState, scenarioId: string): ScenarioContext {
+  for (const feature of state.selectedFeatures) {
+    const scenario = feature.scenarios.find((candidate) => candidate.id === scenarioId);
+    if (scenario) {
+      return { featureId: feature.id, sourceFilePath: feature.sourceFilePath, scenario };
+    }
+  }
+
+  throw new InvalidStepTransitionError(
+    `no existe un escenario con id "${scenarioId}" en la sesión actual.`,
+  );
 }

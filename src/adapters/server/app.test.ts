@@ -730,6 +730,123 @@ describe('createApp (integración, sin puerto TCP real — ver Bash/curl para la
     await request(app).post('/api/session/close').expect(200);
   });
 
+  describe('PATCH /api/session/scenario/:scenarioId', () => {
+    it('corrige nombre + texto de un step pendiente: 200, refleja el cambio en la sesión Y en el .feature en disco', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+
+      const selectResponse = await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+      const scenario = selectResponse.body.session.selectedFeatures[0].scenarios[0];
+      const stepId: string = scenario.steps[0].id;
+
+      const response = await request(app)
+        .patch(`/api/session/scenario/${scenario.id}`)
+        .send({
+          name: 'Login exitoso (corregido)',
+          steps: [{ stepId, text: 'un usuario ya registrado' }],
+        })
+        .expect(200);
+
+      const updatedScenario = response.body.session.selectedFeatures[0].scenarios[0];
+      expect(updatedScenario.name).toBe('Login exitoso (corregido)');
+      expect(updatedScenario.steps[0].step.text).toBe('un usuario ya registrado');
+      // El otro step, no incluido en el patch, queda intacto.
+      expect(updatedScenario.steps[1].step.text).toBe('ingresa credenciales válidas');
+
+      const fileContent = await readFile(join(context.featuresDir, 'login.feature'), 'utf-8');
+      expect(fileContent).toContain('Scenario: Login exitoso (corregido)');
+      expect(fileContent).toContain('Given un usuario ya registrado');
+    });
+
+    it('scenario con un resultado ya asignado -> 400 INVALID_STEP_TRANSITION, sin tocar el archivo', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+
+      const selectResponse = await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+      const scenario = selectResponse.body.session.selectedFeatures[0].scenarios[0];
+      const stepId: string = scenario.steps[0].id;
+
+      await request(app).post(`/api/session/step/${stepId}/result`).send({ result: 'pass' }).expect(200);
+
+      const response = await request(app)
+        .patch(`/api/session/scenario/${scenario.id}`)
+        .send({ name: 'No debería aplicarse' })
+        .expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_STEP_TRANSITION');
+      const fileContent = await readFile(join(context.featuresDir, 'login.feature'), 'utf-8');
+      expect(fileContent).toContain('Scenario: Login exitoso');
+      expect(fileContent).not.toContain('No debería aplicarse');
+    });
+
+    it('el .feature cambió externamente desde el select -> 409 FEATURE_SOURCE_DRIFT, sin corromper el archivo ni la sesión', async () => {
+      const context = await buildContext(projectRoot);
+      const app = createApp(context);
+
+      const selectResponse = await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+      const scenario = selectResponse.body.session.selectedFeatures[0].scenarios[0];
+
+      // El QA (u otro proceso) edita el .feature a mano por fuera de esta sesión.
+      const driftedSource = FEATURE_SOURCE.replace('Login exitoso', 'Login exitoso (editado a mano)');
+      await writeFile(join(context.featuresDir, 'login.feature'), driftedSource, 'utf-8');
+
+      const response = await request(app)
+        .patch(`/api/session/scenario/${scenario.id}`)
+        .send({ name: 'Intento de corrección' })
+        .expect(409);
+
+      expect(response.body.error.code).toBe('FEATURE_SOURCE_DRIFT');
+      // El archivo queda exactamente como lo dejó la edición externa, no a medio escribir.
+      const fileContent = await readFile(join(context.featuresDir, 'login.feature'), 'utf-8');
+      expect(fileContent).toBe(driftedSource);
+
+      const sessionResponse = await request(app).get('/api/session').expect(200);
+      expect(sessionResponse.body.session.selectedFeatures[0].scenarios[0].name).toBe('Login exitoso');
+    });
+
+    it('body vacío -> 400 INVALID_REQUEST_BODY', async () => {
+      const app = createApp(await buildContext(projectRoot));
+
+      const selectResponse = await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+      const scenario = selectResponse.body.session.selectedFeatures[0].scenarios[0];
+
+      const response = await request(app)
+        .patch(`/api/session/scenario/${scenario.id}`)
+        .send({})
+        .expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_REQUEST_BODY');
+    });
+
+    it('scenarioId desconocido -> 400 INVALID_STEP_TRANSITION', async () => {
+      const app = createApp(await buildContext(projectRoot));
+
+      await request(app)
+        .post('/api/session/select')
+        .send({ featureIds: ['login.feature'] })
+        .expect(201);
+
+      const response = await request(app)
+        .patch('/api/session/scenario/no-existe')
+        .send({ name: 'x' })
+        .expect(400);
+
+      expect(response.body.error.code).toBe('INVALID_STEP_TRANSITION');
+    });
+  });
+
   describe('POST /api/session/add-features', () => {
     const CHECKOUT_FEATURE_SOURCE = `Feature: Checkout
   Scenario: Pago con tarjeta

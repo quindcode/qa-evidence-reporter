@@ -2,13 +2,20 @@ import type { JSX } from 'preact';
 import { useState } from 'preact/hooks';
 
 import { RESULT_COLORS } from '../colors';
-import { deriveFeatureResult, deriveScenarioResult } from '../types';
-import type { SessionState } from '../types';
+import { deriveFeatureResult, deriveScenarioResult, isScenarioEditable } from '../types';
+import type { ScenarioExecution, SessionState } from '../types';
 
 export interface StepTreeProps {
   session: SessionState;
   currentStepId: string | undefined;
   onJump: (position: { featureIndex: number; scenarioIndex: number; stepIndex: number }) => void;
+  /**
+   * Se llama al hacer click en el lápiz de un scenario editable (ver
+   * `isScenarioEditable`) — el caller (`Runner.tsx`) abre el modal de
+   * edición. Ausente/no llamado para scenarios no editables (el botón ni se
+   * muestra).
+   */
+  onEditScenario: (scenario: ScenarioExecution) => void;
 }
 
 /**
@@ -23,7 +30,12 @@ export interface StepTreeProps {
  * agregar un segundo nivel de colapso por scenario es posible pero no se
  * consideró necesario para el volumen real de una sesión de QA manual.
  */
-export function StepTree({ session, currentStepId, onJump }: StepTreeProps): JSX.Element {
+export function StepTree({
+  session,
+  currentStepId,
+  onJump,
+  onEditScenario,
+}: StepTreeProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   function toggleFeature(featureId: string): void {
@@ -70,6 +82,17 @@ export function StepTree({ session, currentStepId, onJump }: StepTreeProps): JSX
                           aria-hidden="true"
                         />
                         <span class="step-tree__label">{scenario.name}</span>
+                        {isScenarioEditable(scenario) && (
+                          <button
+                            type="button"
+                            class="step-tree__edit-button"
+                            onClick={() => onEditScenario(scenario)}
+                            aria-label={`Editar caso de prueba "${scenario.name}"`}
+                            title="Editar nombre/steps (solo posible antes de asignar un resultado)"
+                          >
+                            ✎
+                          </button>
+                        )}
                       </div>
                       <ul class="step-tree__steps">
                         {scenario.steps.map((step, stepIndex) => {

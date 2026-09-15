@@ -534,6 +534,127 @@ describe('createSessionEngine', () => {
     });
   });
 
+  describe('editScenario', () => {
+    /**
+     * Feature dedicada (no `makeFeatures()`, compartida por el resto del
+     * archivo): necesita un step de Background, un scenario Outline
+     * expandido y `sourceLocation` en scenarios/steps propios — nada de eso
+     * hace falta para el resto de los tests de este archivo.
+     */
+    function makeEditableFeatures(): ParsedFeature[] {
+      return [
+        {
+          name: 'Login',
+          description: '',
+          tags: [],
+          language: 'en',
+          filePath: 'login.feature',
+          scenarios: [
+            {
+              name: 'Successful login',
+              tags: [],
+              isOutlineExample: false,
+              sourceLocation: { line: 3 },
+              steps: [
+                { keyword: 'Given', text: 'the store is open', fromBackground: true },
+                {
+                  keyword: 'When',
+                  text: 'a registered user',
+                  fromBackground: false,
+                  sourceLocation: { line: 4 },
+                },
+                {
+                  keyword: 'Then',
+                  text: 'they see the dashboard',
+                  fromBackground: false,
+                  sourceLocation: { line: 5 },
+                },
+              ],
+            },
+            {
+              name: 'Cart total row',
+              tags: [],
+              isOutlineExample: true,
+              steps: [{ keyword: 'Given', text: 'a cart total of 100', fromBackground: false }],
+            },
+          ],
+        },
+      ];
+    }
+
+    it('corrige el nombre del scenario y el texto de un step propio, sin tocar el step de Background', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const created = await engine.createSession(makeEditableFeatures(), 'P');
+      const scenario = created.selectedFeatures[0].scenarios[0];
+      const ownStepId = scenario.steps[1].id;
+      const backgroundStepId = scenario.steps[0].id;
+
+      const updated = await engine.editScenario(scenario.id, {
+        name: 'Successful login (fixed)',
+        steps: [{ stepId: ownStepId, text: 'a registered admin user' }],
+      });
+
+      const updatedScenario = updated.selectedFeatures[0].scenarios[0];
+      expect(updatedScenario.name).toBe('Successful login (fixed)');
+      expect(updatedScenario.steps[1].step.text).toBe('a registered admin user');
+      // El resto de los campos del step editado se conserva (keyword, fromBackground, sourceLocation).
+      expect(updatedScenario.steps[1].step.keyword).toBe('When');
+      expect(updatedScenario.steps[1].step.sourceLocation).toEqual({ line: 4 });
+      // El step de Background queda intacto.
+      const backgroundStep = updatedScenario.steps.find((s) => s.id === backgroundStepId)!;
+      expect(backgroundStep.step.text).toBe('the store is open');
+    });
+
+    it('rechaza editar un step de Background (aunque el resto del scenario siga pending)', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const created = await engine.createSession(makeEditableFeatures(), 'P');
+      const scenario = created.selectedFeatures[0].scenarios[0];
+      const backgroundStepId = scenario.steps[0].id;
+
+      await expect(
+        engine.editScenario(scenario.id, { steps: [{ stepId: backgroundStepId, text: 'x' }] }),
+      ).rejects.toBeInstanceOf(InvalidStepTransitionError);
+    });
+
+    it('rechaza editar un scenario que proviene de un Scenario Outline', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const created = await engine.createSession(makeEditableFeatures(), 'P');
+      const outlineScenario = created.selectedFeatures[0].scenarios[1];
+
+      await expect(
+        engine.editScenario(outlineScenario.id, { name: 'x' }),
+      ).rejects.toBeInstanceOf(InvalidStepTransitionError);
+    });
+
+    it('rechaza editar un scenario apenas cualquiera de sus steps tiene un resultado asignado', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const created = await engine.createSession(makeEditableFeatures(), 'P');
+      const scenario = created.selectedFeatures[0].scenarios[0];
+      const ownStepId = scenario.steps[1].id;
+
+      // "skip" cascada al resto de los steps del scenario (ver `setStepResult`) — el caso de
+      // prueba completo queda bloqueado, no solo el step marcado.
+      await engine.setStepResult(scenario.steps[0].id, 'skip');
+
+      await expect(
+        engine.editScenario(scenario.id, { steps: [{ stepId: ownStepId, text: 'x' }] }),
+      ).rejects.toBeInstanceOf(InvalidStepTransitionError);
+    });
+
+    it('rechaza scenarioId/stepId desconocidos', async () => {
+      const engine = createSessionEngine(sessionFilePath, { clock: makeClock() });
+      const created = await engine.createSession(makeEditableFeatures(), 'P');
+      const scenario = created.selectedFeatures[0].scenarios[0];
+
+      await expect(engine.editScenario('no-existe', { name: 'x' })).rejects.toBeInstanceOf(
+        InvalidStepTransitionError,
+      );
+      await expect(
+        engine.editScenario(scenario.id, { steps: [{ stepId: 'no-existe', text: 'x' }] }),
+      ).rejects.toBeInstanceOf(InvalidStepTransitionError);
+    });
+  });
+
   describe('persistencia (save/load)', () => {
     it('round-trip: guardar y volver a cargar desde el mismo path reproduce el mismo estado', async () => {
       const engineA = createSessionEngine(sessionFilePath, { clock: makeClock() });

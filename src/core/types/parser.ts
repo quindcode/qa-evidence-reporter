@@ -17,6 +17,22 @@
  * paso del escenario, sin `Given/When/Then` previo) cae por convención en
  * `'Given'` como fallback seguro.
  */
+/**
+ * Ubicación de origen de un `ParsedStep`/`ParsedScenario` dentro de su
+ * archivo `.feature`. Agregada para la edición de casos de prueba desde la
+ * UI (ver `core/parser/featureWriter.ts`): permite reescribir exactamente la
+ * línea que corresponde a un step/scenario sin reserializar el archivo
+ * completo. Deliberadamente solo lleva `line` (no columna/offset): el
+ * reemplazo real se hace por coincidencia de texto al final de la línea (ver
+ * `applyFeatureTextEdit`), no por aritmética de columnas — más robusto frente
+ * a keywords traducidos (`Given`/`Dado`, `And`/`Y`, etc.) sin tener que
+ * conocerlos todos acá.
+ */
+export interface SourceLocation {
+  /** Línea 1-based dentro del archivo `.feature` de origen. */
+  line: number;
+}
+
 export interface ParsedStep {
   /** Forma canónica en inglés del tipo de paso. */
   keyword: 'Given' | 'When' | 'Then';
@@ -28,6 +44,15 @@ export interface ParsedStep {
    * `ParsedScenario`).
    */
   fromBackground: boolean;
+  /**
+   * Línea de origen del step en el `.feature`, para poder reescribirlo desde
+   * la UI (ver `SourceLocation`). `undefined` cuando el scenario dueño es
+   * `isOutlineExample: true` (cada fila de `Examples` comparte la misma línea
+   * de origen y su texto ya viene interpolado con los valores de esa fila —
+   * no hay una línea "propia" segura para reescribir), sin importar si el
+   * propio step viene o no de un Background.
+   */
+  sourceLocation?: SourceLocation;
 }
 
 /**
@@ -75,6 +100,12 @@ export interface ParsedScenario {
    * `isOutlineExample` es `true`.
    */
   exampleValues?: Record<string, string>;
+  /**
+   * Línea de origen del `Scenario:`/`Escenario:` en el `.feature` (ver
+   * `SourceLocation`). `undefined` cuando `isOutlineExample` es `true` —
+   * mismo motivo que `ParsedStep.sourceLocation`.
+   */
+  sourceLocation?: SourceLocation;
 }
 
 /**

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import express, { type Express, type Response } from 'express';
 
 import { createEvidenceStore } from '../../core/evidence/index.js';
-import { createGherkinParser } from '../../core/parser/index.js';
+import { createFeatureWriter, createGherkinParser } from '../../core/parser/index.js';
 import { createSessionEngine } from '../../core/session/index.js';
 import type { ServerContext } from './context.js';
 import { createErrorHandler } from './errors.js';
@@ -39,6 +39,7 @@ export function createApp(context: ServerContext): Express {
   const services: CoreServices = {
     gherkinParser: createGherkinParser({ logger: context.logger }),
     sessionEngine: createSessionEngine(context.sessionFilePath),
+    featureWriter: createFeatureWriter(),
     evidenceStore: createEvidenceStore(context.evidenceBaseDir),
     settingsService: createSettingsService(
       context.configFilePath,

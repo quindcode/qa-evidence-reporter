@@ -681,7 +681,12 @@ describe('Runner — Marcar resultado como Fail', () => {
     fireEvent.input(screen.getByLabelText(/descripción del defecto/i), {
       target: { value: 'Pantalla rota' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /fail/i }));
+    // Regex anclada (no solo /fail/i): el fixture de esta sesión tiene un
+    // scenario llamado "Failed login", cuyo botón de edición (StepTree,
+    // agregado por la feature de edición de casos de prueba pendientes)
+    // también matchearía /fail/i por su aria-label ("Editar caso de prueba
+    // \"Failed login\"") si no se ancla al texto exacto del botón real.
+    fireEvent.click(screen.getByRole('button', { name: /^✕ fail$/i }));
 
     await waitFor(() =>
       expect(onSessionUpdate).toHaveBeenCalledWith(jumpedSession, jumpedCurrentStep),

@@ -3,16 +3,19 @@ import { dirname } from 'node:path';
 
 import { InvalidStepTransitionError, SessionNotFoundError } from '../types/errors.js';
 import type { ParsedFeature, ParsedScenario, ParsedStep } from '../types/parser.js';
-import type {
-  CurrentStepInfo,
-  FeatureExecution,
-  ScenarioExecution,
-  SessionEngine,
-  SessionPosition,
-  SessionState,
-  SetStepResultOptions,
-  StepExecution,
-  StepResult,
+import {
+  assertScenarioEditable,
+  findEditableStep,
+  type CurrentStepInfo,
+  type FeatureExecution,
+  type ScenarioEditChanges,
+  type ScenarioExecution,
+  type SessionEngine,
+  type SessionPosition,
+  type SessionState,
+  type SetStepResultOptions,
+  type StepExecution,
+  type StepResult,
 } from '../types/session.js';
 import { buildFeatureId, buildScenarioId, buildStepId } from './ids.js';
 
@@ -294,6 +297,27 @@ export function createSessionEngine(
     return current;
   }
 
+  async function editScenario(
+    scenarioId: string,
+    changes: ScenarioEditChanges,
+  ): Promise<SessionState> {
+    const current = requireState();
+    const scenario = findScenario(current, scenarioId);
+    assertScenarioEditable(scenario);
+
+    if (changes.name !== undefined) {
+      scenario.name = changes.name;
+    }
+    for (const stepChange of changes.steps ?? []) {
+      const step = findEditableStep(scenario, stepChange.stepId);
+      step.step = { ...step.step, text: stepChange.text };
+    }
+
+    current.updatedAt = clock();
+    await persist();
+    return current;
+  }
+
   async function close(): Promise<void> {
     await rm(sessionFilePath, { force: true });
     state = undefined;
@@ -328,6 +352,7 @@ export function createSessionEngine(
     addEvidence,
     removeEvidence,
     addNotes,
+    editScenario,
     close,
   };
 }
@@ -356,6 +381,8 @@ function toScenarioExecution(
     name: scenario.name,
     tags: scenario.tags,
     steps: scenario.steps.map((step, stepIndex) => toStepExecution(step, scenarioId, stepIndex)),
+    isOutlineExample: scenario.isOutlineExample,
+    sourceLocation: scenario.sourceLocation,
   };
 }
 
@@ -481,4 +508,16 @@ function findScenarioContainingStep(state: SessionState, stepId: string): Scenar
   }
 
   throw new InvalidStepTransitionError(`no existe un step con id "${stepId}" en la sesión actual.`);
+}
+
+/** Busca un `ScenarioExecution` por `id` en TODA la sesión — lo usa `editScenario`. */
+function findScenario(state: SessionState, scenarioId: string): ScenarioExecution {
+  for (const feature of state.selectedFeatures) {
+    const scenario = feature.scenarios.find((candidate) => candidate.id === scenarioId);
+    if (scenario) return scenario;
+  }
+
+  throw new InvalidStepTransitionError(
+    `no existe un escenario con id "${scenarioId}" en la sesión actual.`,
+  );
 }

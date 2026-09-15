@@ -1580,3 +1580,105 @@ el caso normal). Verificado además de punta a punta contra un server real
 distinto, simulando exactamente dos pastes de portapapeles): la respuesta
 del segundo devuelve `"image (1).png"`, y ambos archivos quedan en disco
 sin pisarse.
+
+### Post-fase 6 — feature: edición de casos de prueba pendientes desde la UI
+
+Pedido explícito del usuario: los `.feature` son la única fuente del texto de
+cada caso de prueba (scenario), y hasta ahora no se podían corregir sin editar
+el archivo a mano — un typo obligaba a frenar la sesión en curso o esperar a
+la próxima corrida. Se agregó edición desde el runner, con una regla dura: un
+scenario solo es editable mientras NINGUNO de sus steps tiene todavía un
+resultado asignado (`pass`/`fail`/`skip`) — apenas se marca el primero, el
+caso de prueba completo queda bloqueado para edición.
+
+**Hallazgo clave que definió el diseño**: `session.json` guarda una COPIA del
+texto de cada step en el momento de `createSession` — el runner nunca vuelve
+a leer el `.feature` en vivo durante la ejecución (`GET /api/features` sí
+reparsea, pero solo se usa ANTES de seleccionar). Por eso la corrección se
+aplica en dos lugares: la sesión activa (efecto inmediato, sin perder
+evidencia ni frenar la ejecución) y el `.feature` en disco (para que la
+próxima sesión ya nazca corregida).
+
+**Nuevo endpoint**: `PATCH /api/session/scenario/:scenarioId`, body
+`{ name?: string, steps?: Array<{ stepId: string; text: string }> }`
+(`adapters/server/routes/session.ts`). Orden deliberado: reescribe el
+`.feature` PRIMERO (`services.featureWriter.updateScenario`, ver abajo) y
+recién después muta `session.json` (`sessionEngine.editScenario`) — si el
+archivo cambió respecto a lo esperado, no se toca la sesión; el trade-off
+inverso (sesión desincronizada si la mutación fallara justo después de
+escribir el archivo, algo que no debería pasar porque reusa las mismas
+validaciones) se documenta como aceptado, mismo criterio que ya usa este
+archivo para `DELETE .../evidence`.
+
+**`core/types/parser.ts`/`gherkinParser.ts`**: se agregó `SourceLocation`
+(`{ line: number }`) a `ParsedStep`/`ParsedScenario` — deliberadamente NO se
+agrega columna ni offset: la reescritura real matchea por TEXTO al final de
+la línea (`applyFeatureTextEdit`), no por aritmética de columnas, así no hace
+falta conocer todos los keywords traducidos de Gherkin (`Given`/`Dado`,
+`And`/`Y`/`Pero`, etc.) para saber dónde empieza el texto editable.
+`sourceLocation` se puebla SOLO cuando el scenario no es `isOutlineExample`:
+cada fila expandida de un `Scenario Outline`/`Esquema del escenario` comparte
+la misma línea de origen y su texto ya viene interpolado, así que no hay una
+línea propia segura para reescribir — un `Scenario Outline` nunca es editable
+desde la UI, por diseño, no por un límite temporal a resolver después. Los
+steps de `Background`/`Antecedentes` tampoco se indexan (nunca son
+editables — son compartidos por todos los scenarios de la feature; editarlos
+afectaría retroactivamente a cualquier otro scenario que ya tenga resultado).
+
+**Nuevo `core/parser/featureWriter.ts`** (`createFeatureWriter`, mismo patrón
+de dependencias inyectables que `createGherkinParser`): reescribe SOLO las
+líneas indicadas de un `.feature`, nunca reserializa el archivo completo (evita
+el riesgo de reformatear comentarios/espaciado de scenarios que no se están
+editando). Para cada línea, verifica que termine (ignorando espacio en blanco
+final) en el `oldText` que la sesión tenía guardado — si no coincide (el
+archivo cambió por fuera, o el step es una construcción no soportada como
+docstring/tabla), no escribe NADA y lanza `FeatureSourceDriftError`
+(`core/types/errors.ts`, nuevo, `FEATURE_SOURCE_DRIFT` → 409). Preserva el
+estilo de fin de línea (`\r\n`/`\n`) del archivo original.
+
+**`core/types/session.ts`/`sessionEngine.ts`**: `ScenarioExecution` gana
+`isOutlineExample`/`sourceLocation` (copiados de `ParsedScenario`). Dos
+funciones puras nuevas, exportadas junto a `deriveScenarioResult`:
+`assertScenarioEditable` (scenario no-outline + todos sus steps `pending`) y
+`findEditableStep` (el step pertenece al scenario y no es de Background) — las
+reutilizan tanto `SessionEngine.editScenario` (nuevo método de la interfaz)
+como `adapters/server` (para fallar ANTES de tocar el `.feature`, con el mismo
+mensaje, sin duplicar la regla). `core/session` deliberadamente NO escribe el
+`.feature`: sigue conociendo solo `session.json`, igual que `core/parser` solo
+conoce `.feature` — orquestar ambos (archivo primero, sesión después) es
+responsabilidad del adapter, mismo criterio que ya separa
+`evidenceStore.save`/`sessionEngine.addEvidence` en la ruta de subida de
+evidencia.
+
+Nota cosmética esperada: `ScenarioExecution.id` incluye un slug del NOMBRE
+ORIGINAL (`core/session/ids.ts`) y no se regenera al renombrar — mismo
+criterio ya aceptado en fase 2 para las carpetas de evidencia ("redundancia
+cosmética" preferible a invalidar referencias ya usadas por evidencia/
+resultados durante la sesión).
+
+**UI**: lápiz de edición por scenario en `StepTree.tsx` (visible solo si
+`isScenarioEditable`, ver `ui/types.ts` — duplicado de
+`assertScenarioEditable`, mismo criterio que el resto de `ui/types.ts` con
+`core/types/session.ts`), deliberadamente en el árbol lateral y no solo en el
+step actual: el pedido explícito era poder corregir un caso de prueba SIN
+tener que "avanzar" hasta él primero. Nuevo `ScenarioEditModal.tsx`
+(overlay genérico `.modal`/`.modal-overlay`, reutilizable por un futuro
+modal) — llama a `api.editScenario` directamente y reporta por
+`onSessionUpdate`/`onError`, mismo patrón que `SettingsPanel.tsx` (formulario
+autocontenido, no un control embebido que comparta el `busy` de `Runner.tsx`).
+Los steps de Background se listan dentro del modal, siempre deshabilitados,
+con la explicación de por qué.
+
+Verificado de punta a punta contra un server real corriendo sobre una copia
+de `sample-project/` (`curl`): corrección de nombre + step de
+`login.feature` (español, keywords `Dado`/`Cuando`/`Entonces`) reflejada al
+instante en la sesión Y en el archivo; bloqueo inmediato tras marcar un
+resultado (`INVALID_STEP_TRANSITION`); rechazo de un scenario de
+`carrito-compras.feature` proveniente de `Esquema del escenario`; rechazo de
+editar un step de `Antecedentes`; edición exitosa de un step propio de un
+scenario con Background (sin tocar los steps de Background). Tests nuevos:
+`featureWriter.test.ts` (función pura + wrapper con I/O inyectado),
+casos nuevos en `gherkinParser.test.ts` (`sourceLocation` presente/ausente
+según Background/Outline), `sessionEngine.test.ts` (`describe('editScenario'`,
+5 casos) y `app.test.ts` (`describe('PATCH /api/session/scenario/:scenarioId'`,
+5 casos, incluyendo el 409 por drift contra el filesystem real).

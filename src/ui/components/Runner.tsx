@@ -5,10 +5,11 @@ import { api } from '../api';
 import type { ApiRequestError } from '../api';
 import { EvidenceArea } from './EvidenceArea';
 import { ProgressHeader } from './ProgressHeader';
+import { ScenarioEditModal } from './ScenarioEditModal';
 import { StepResultPanel } from './StepResultPanel';
 import { StepTree } from './StepTree';
 import { getCurrentStepFromSession, isLastStepInSession } from '../types';
-import type { CurrentStepInfo, EvidenceFile, SessionState, StepResult } from '../types';
+import type { CurrentStepInfo, EvidenceFile, ScenarioExecution, SessionState, StepResult } from '../types';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 export interface RunnerProps {
@@ -88,6 +89,7 @@ export function Runner({
   const [jiraPublishedUrl, setJiraPublishedUrl] = useState<string | null>(null);
   const [azureDevOpsWorkItemId, setAzureDevOpsWorkItemId] = useState('');
   const [azureDevOpsPublishedUrl, setAzureDevOpsPublishedUrl] = useState<string | null>(null);
+  const [editingScenario, setEditingScenario] = useState<ScenarioExecution | null>(null);
   const defectFieldRef = useRef<HTMLTextAreaElement>(null);
 
   const stepId = currentStep?.step.id;
@@ -329,8 +331,22 @@ export function Runner({
   return (
     <div class="runner">
       <aside class="runner__sidebar">
-        <StepTree session={session} currentStepId={stepId} onJump={handleJump} />
+        <StepTree
+          session={session}
+          currentStepId={stepId}
+          onJump={handleJump}
+          onEditScenario={setEditingScenario}
+        />
       </aside>
+
+      {editingScenario && (
+        <ScenarioEditModal
+          scenario={editingScenario}
+          onSessionUpdate={onSessionUpdate}
+          onError={onError}
+          onClose={() => setEditingScenario(null)}
+        />
+      )}
 
       <div class="runner__main">
         <ProgressHeader session={session} />

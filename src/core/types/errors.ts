@@ -88,6 +88,34 @@ export class InvalidStepTransitionError extends QaError {
 }
 
 /**
+ * Se lanza por `core/parser/featureWriter.ts` (`applyFeatureTextEdit`) cuando
+ * la línea del `.feature` que se esperaba reescribir ya no termina con el
+ * texto que la sesión tenía guardado (`oldText`) — el archivo cambió desde
+ * que se creó/snapshoteó la sesión (edición manual externa, u otra corrección
+ * previa), o el step apunta a una construcción no soportada por el reemplazo
+ * de línea simple (docstring/tabla de datos). Nunca se aplica un edit
+ * parcial: si cualquier línea del lote no coincide, no se escribe nada.
+ */
+export class FeatureSourceDriftError extends QaError {
+  /** Ruta del archivo `.feature` cuyo contenido no coincidió con lo esperado. */
+  readonly filePath: string;
+  /** Línea (1-based) donde se detectó la discrepancia. */
+  readonly line: number;
+
+  constructor(filePath: string, line: number, options?: ErrorOptions) {
+    super(
+      `El archivo "${filePath}" cambió desde que se guardó esta sesión (línea ${line} ya no ` +
+        'coincide con el texto esperado) — no se puede aplicar la corrección de forma segura. ' +
+        'Cerrá la sesión y volvé a generar una a partir del archivo actual, o corregilo a mano.',
+      'FEATURE_SOURCE_DRIFT',
+      options,
+    );
+    this.filePath = filePath;
+    this.line = line;
+  }
+}
+
+/**
  * Se lanza cuando un archivo de evidencia excede el tamaño máximo permitido.
  *
  * Nota de diseño (ver JSDoc de `EvidenceStore` en `core/types/evidence.ts`):

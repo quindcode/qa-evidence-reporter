@@ -179,6 +179,22 @@ export const api = {
     });
   },
 
+  /**
+   * Corrige el nombre y/o el texto de steps de un caso de prueba TODAVÍA
+   * pendiente — ver `PATCH /api/session/scenario/:scenarioId`
+   * (`routes/session.ts`) y `isScenarioEditable`/`isStepEditable` (`types.ts`).
+   */
+  editScenario(
+    scenarioId: string,
+    changes: { name?: string; steps?: Array<{ stepId: string; text: string }> },
+  ): Promise<SessionResponse> {
+    return request<SessionResponse>(`/api/session/scenario/${encodeURIComponent(scenarioId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changes),
+    });
+  },
+
   navigateNext(): Promise<SessionResponse> {
     return request<SessionResponse>('/api/session/navigate', {
       method: 'POST',

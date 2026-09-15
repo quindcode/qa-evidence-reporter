@@ -9,13 +9,19 @@ import {
   type Envelope,
   type Feature,
   type Scenario,
+  type Step,
   type Pickle,
   type PickleStep,
 } from '@cucumber/messages';
 
 import { FeatureParseError } from '../types/errors.js';
 import type { Logger } from '../types/logger.js';
-import type { GherkinParser, ParsedFeature, ParsedScenario, ParsedStep } from '../types/parser.js';
+import type {
+  GherkinParser,
+  ParsedFeature,
+  ParsedScenario,
+  ParsedStep,
+} from '../types/parser.js';
 
 /**
  * Punto de extensión mínimo para inyectar dependencias en
@@ -93,7 +99,7 @@ export function createGherkinParser(deps: GherkinParserDeps = {}): GherkinParser
       .filter((envelope) => envelope.pickle)
       .map((envelope) => envelope.pickle as Pickle);
 
-    const { scenariosById, backgroundStepIds } = indexFeature(feature);
+    const { scenariosById, backgroundStepIds, stepsById } = indexFeature(feature);
 
     return {
       name: feature.name,
@@ -102,7 +108,7 @@ export function createGherkinParser(deps: GherkinParserDeps = {}): GherkinParser
       language: feature.language,
       filePath,
       scenarios: pickles.map((pickle) =>
-        toParsedScenario(pickle, scenariosById, backgroundStepIds),
+        toParsedScenario(pickle, scenariosById, backgroundStepIds, stepsById),
       ),
     };
   }
@@ -138,12 +144,22 @@ interface FeatureIndex {
   scenariosById: Map<string, Scenario>;
   /** Ids de los steps que pertenecen a un bloque Background (de la Feature o de una Rule). */
   backgroundStepIds: Set<string>;
+  /**
+   * Steps originales (sin expandir, con `location` real) de cada `Scenario`,
+   * indexados por su id de AST — usado para poblar `ParsedStep.sourceLocation`
+   * (ver `core/types/parser.ts`). Deliberadamente NO incluye los steps de
+   * `Background`: nunca son editables desde la UI (ver
+   * `core/types/session.ts`, `assertScenarioEditable`/`findEditableStep`), así
+   * que no hace falta resolver su línea de origen.
+   */
+  stepsById: Map<string, Step>;
 }
 
 /**
  * Indexa la Feature original (antes de compilar a Pickles) para poder,
  * dado un Pickle ya expandido, recuperar: sus tags propios (no heredados),
- * y si cada uno de sus steps venía de un Background.
+ * si cada uno de sus steps venía de un Background, y la línea de origen real
+ * de cada step propio de un scenario.
  *
  * Nota: se recorren también los `Rule` (si los hubiera) por robustez, aunque
  * ARCHITECTURE.md no exige soporte explícito de `Rule` en esta fase.
@@ -151,13 +167,19 @@ interface FeatureIndex {
 function indexFeature(feature: Feature): FeatureIndex {
   const scenariosById = new Map<string, Scenario>();
   const backgroundStepIds = new Set<string>();
+  const stepsById = new Map<string, Step>();
+
+  function indexScenario(scenario: Scenario): void {
+    scenariosById.set(scenario.id, scenario);
+    for (const step of scenario.steps) stepsById.set(step.id, step);
+  }
 
   for (const child of feature.children) {
     if (child.background) {
       for (const step of child.background.steps) backgroundStepIds.add(step.id);
     }
     if (child.scenario) {
-      scenariosById.set(child.scenario.id, child.scenario);
+      indexScenario(child.scenario);
     }
     if (child.rule) {
       for (const ruleChild of child.rule.children) {
@@ -165,19 +187,20 @@ function indexFeature(feature: Feature): FeatureIndex {
           for (const step of ruleChild.background.steps) backgroundStepIds.add(step.id);
         }
         if (ruleChild.scenario) {
-          scenariosById.set(ruleChild.scenario.id, ruleChild.scenario);
+          indexScenario(ruleChild.scenario);
         }
       }
     }
   }
 
-  return { scenariosById, backgroundStepIds };
+  return { scenariosById, backgroundStepIds, stepsById };
 }
 
 function toParsedScenario(
   pickle: Pickle,
   scenariosById: Map<string, Scenario>,
   backgroundStepIds: Set<string>,
+  stepsById: Map<string, Step>,
 ): ParsedScenario {
   // Por construcción del compilador de Pickles de @cucumber/gherkin:
   // astNodeIds = [scenario.id] para un Scenario normal, o
@@ -193,15 +216,35 @@ function toParsedScenario(
     tags: scenario ? scenario.tags.map((tag) => tag.name) : [],
     isOutlineExample,
     exampleValues: isOutlineExample && scenario ? findExampleValues(scenario, rowId) : undefined,
-    steps: pickle.steps.map((step) => toParsedStep(step, backgroundStepIds)),
+    // Ver JSDoc de `ParsedScenario.sourceLocation`: nunca se puebla para una
+    // fila expandida de Scenario Outline (todas comparten la misma línea de
+    // origen, la del `Scenario Outline:`).
+    sourceLocation:
+      !isOutlineExample && scenario ? { line: scenario.location.line } : undefined,
+    steps: pickle.steps.map((step) =>
+      toParsedStep(step, backgroundStepIds, stepsById, isOutlineExample),
+    ),
   };
 }
 
-function toParsedStep(step: PickleStep, backgroundStepIds: Set<string>): ParsedStep {
+function toParsedStep(
+  step: PickleStep,
+  backgroundStepIds: Set<string>,
+  stepsById: Map<string, Step>,
+  isOutlineExample: boolean,
+): ParsedStep {
+  // Mismo criterio que `ParsedScenario.sourceLocation`: para una fila de
+  // Outline, `step.astNodeIds[0]` sigue apuntando al ÚNICO step original del
+  // Scenario Outline (compartido por todas sus filas expandidas) — no hay
+  // una línea propia de esta fila para reescribir, así que se omite.
+  const originalStepId = !isOutlineExample ? step.astNodeIds[0] : undefined;
+  const originalStep = originalStepId ? stepsById.get(originalStepId) : undefined;
+
   return {
     keyword: keywordFromPickleStepType(step.type),
     text: step.text,
     fromBackground: step.astNodeIds.some((id) => backgroundStepIds.has(id)),
+    sourceLocation: originalStep ? { line: originalStep.location.line } : undefined,
   };
 }
 

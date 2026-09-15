@@ -1,3 +1,4 @@
+import type { FeatureWriter } from '../../core/parser/index.js';
 import type { EvidenceStore } from '../../core/types/evidence.js';
 import type { GherkinParser } from '../../core/types/parser.js';
 import type { SessionEngine } from '../../core/types/session.js';
@@ -28,4 +29,12 @@ export interface CoreServices {
   sessionEngine: SessionEngine;
   evidenceStore: EvidenceStore;
   settingsService: SettingsService;
+  /**
+   * Reescribe el `.feature` de origen al editar un caso de prueba pendiente
+   * desde la UI (`PATCH /api/session/scenario/:scenarioId`, ver
+   * `routes/session.ts`). Sin estado propio (a diferencia de `sessionEngine`)
+   * — se podría construir al vuelo en la ruta, pero se instancia acá una sola
+   * vez por consistencia con el resto de `CoreServices`.
+   */
+  featureWriter: FeatureWriter;
 }
